@@ -1,0 +1,13 @@
+vene/
+__pycache__/
+*.pyc
+
+~$*.doc
+*.tmp
+
+.DS_Store
+Thumbs.db
+
+*.swp
+*.swo
+*~
