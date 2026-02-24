@@ -16,7 +16,7 @@
 
 配置完毕。
 
-##### 2. 基础运行
+##### 2. Day01
 
 ```python
 # 用于启动激活浏览器
@@ -86,17 +86,124 @@ get(url) 进入对应网页；save_screenshot(./screenshot.png) 失败截图；q
 
 ##### 4. 真实元素方法
 
-click() 点击；clear() 清除文本；send_keys("文本") 向文本框发送文本；
+click() 点击；clear() 清除文本；send_keys("文本") 向文本框发送文本；is_displayed()用户是否可见(搜索框 按钮)
 
 ##### 5.  EC方法
 
-- ###### element_to_be_clickable((By.ID,"id")) 等到元素可点击但是不会点击
+- ###### element_to_be_clickable((By.ID,"id")) 元素可见也能够被点击（最有用）
 
 - ###### element_to_be_present() 等待元素出现，但不会点击（可能被隐藏）
 
-- ###### visibility_of_element_located() 检查元素是否可见（不管能不能点击）
+- ###### visibility_of_element_located() 元素是可见的（不管能不能点击），可见不代表能够点击
+
+- ###### presence_of_element_located() 元素已经存在DOM中，但是不可见
 
 - ###### title_contains() 标题是否含有什么关键字，取决于你搜索的什么，是否进入该主题（判断）
+
+##### 6. By 定位
+
+- ID 唯一的且直接定位
+- NAME 某个元素拥有属性，name="wc"
+- XPATH eg : //*/div[@id="yes" and @class="no"]/parent::div/a[contians(text(),"新闻")]/following-sibling::*[1]
+- CSS eg : div#yes>div.no a
+- LINK_TEXT 精确文本匹配
+- PARTIAL_LINK 模糊匹配
+- CLASS_NAME 属性值匹配
+- TAG_NAME 元素值匹配
+
+##### 7. Day02
+
+```python
+# 打印完整库
+import traceback
+from time import sleep
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+from selenium.common.exceptions import TimeoutException,NoSuchElementException
+# 动作链
+from selenium.webdriver.common.action_chains import ActionChains
+
+def by_method_located_text(wait,located):
+    print(f'现在正在使用{repr(located[0])}进行搜索文本框')
+    real_element=wait.until(EC.visibility_of_element_located(located))
+    real_element.click()
+    real_element.clear()
+    print(str(located[0]))
+    real_element.send_keys(f"{repr(located[0])}")
+    sleep(1)
+    real_element.clear()
+    # 点击空白处使得后续地图能够被选中
+    wait.until(EC.visibility_of_element_located((By.TAG_NAME,"body"))).click()
+
+
+
+def by_method_located(wait,located):
+    print(f'现在正在使用{repr(located[0])}进行搜索文本框')
+    real_element=wait.until(EC.visibility_of_element_located(located))
+    if real_element:
+        print(real_element,real_element.text)
+    print(f'我已经找到了{real_element.text}')
+    sleep(1)
+
+
+def main():
+    driver=None
+    try:
+        options=Options()
+        options.add_argument("--start-maximized")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        driver=webdriver.Chrome(options=options)
+        driver.get("https://www.baidu.com".strip())
+        wait=WebDriverWait(driver,10)
+
+        # 创建定位器
+        located_id=(By.ID,"chat-textarea")
+        located_class_name=(By.CLASS_NAME,"chat-input-textarea")
+        located_xpath=(By.XPATH,'//div[@id="chat-input-area"]/textarea')
+        located_css=(By.CSS_SELECTOR,'#chat-input-area textarea')
+
+        located_link_text=(By.LINK_TEXT,'更多')
+        located_partial_text=(By.PARTIAL_LINK_TEXT,'地')
+
+        by_method_located(wait,located_link_text)
+        by_method_located(wait,located_partial_text)
+        by_method_located_text(wait,located_id)
+        by_method_located_text(wait,located_class_name)
+        by_method_located_text(wait,located_xpath)
+        by_method_located_text(wait,located_css)
+    # 超时异常
+    except TimeoutException as e:
+        print(e)
+    # 未定义到元素异常
+    except NoSuchElementException as e:
+        print(e)
+    except Exception as e:
+        if driver:
+            driver.save_screenshot("./error_screenshot/error_screenshot.png")
+            print(e)
+        traceback.print_exc() # 打印完整堆栈，方便调试
+    finally:
+        driver.quit()
+
+
+if __name__=="__main__":
+    main()
+
+
+
+```
+
+##### 8. 等待
+
+- ###### 强制等待（time.sleep()）
+
+- ###### 隐式等待（driver.implicitly_wait(10)）全局设置，找元素时最多轮寻10秒
+
+- ###### 显示等待（WebDriverWait(driver,10,0.5).until(EC.presence_of_element_located((By.ID,"wc")))）
 
 #### 常用方法：
 
