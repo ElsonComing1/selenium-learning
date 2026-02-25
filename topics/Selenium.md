@@ -90,21 +90,61 @@ click() 点击；clear() 清除文本；send_keys("文本") 向文本框发送�
 
 ##### 5.  EC方法
 
-- ###### element_to_be_clickable((By.ID,"id")) 元素可见也能够被点击（最有用）
+- ##### element_to_be_clickable((By.ID,"id")) 元素可见也能够被点击（最有用）
 
 - ###### element_to_be_present() 等待元素出现，但不会点击（可能被隐藏）
 
-- ###### visibility_of_element_located() 元素是可见的（不管能不能点击），可见不代表能够点击
+- ##### visibility_of_element_located() 元素是可见的（不管能不能点击），可见不代表能够点击（有用）
 
-- ###### presence_of_element_located() 元素已经存在DOM中，但是不可见
+- ##### presence_of_element_located() 元素已经存在DOM中，但是不可见
+
+- ###### text_to_be_present_in_element((By.ID,"kw"),"追觅") 元素的文本是否有某元素
+
+- ###### text_to_be_present_in_element_value((By.ID, "kw"), "追觅") 输入框值判断
 
 - ###### title_contains() 标题是否含有什么关键字，取决于你搜索的什么，是否进入该主题（判断）
+
+- ###### title_is() 标题完全匹配
+
+- ###### url_contians("wd=追觅") url是否含有
+
+- ###### url_to_be("https://www.baidu.com/s?wd=追觅") 完整准备
+
+- element_to_be_selected((By.ID,"checkbox")) 复选框被选中
+
+- element_located_to_be_selected((By.ID,"radio")) 功能与山上一方法相似
+
+- invisibility_of_element_located((By.ID,"loading")) 判断加载元素是否消失
+
+- staleness_of(old_element)  元素变陈旧（页面刷新后旧元素失效）
+
+- frame_to_be_available_and_switch_to_it((By.ID, "iframe")) 判断同时跳转新窗口
+
+- new_window_is_opened(current_handles) 通窗口句柄判断新窗口是否打开
+
+- number_of_windows_to_be(2) 判断窗口数量
+
+- ```python
+  # 任一条件满足（或关系）
+  EC.any_of(
+      EC.presence_of_element_located((By.ID, "success")),
+      EC.presence_of_element_located((By.ID, "error"))
+  )
+  
+  # 所有条件满足（与关系）
+  EC.all_of(
+      EC.visibility_of_element_located((By.ID, "form")),
+      EC.element_to_be_clickable((By.ID, "submit"))
+  )
+  ```
+
+  
 
 ##### 6. By 定位
 
 - ID 唯一的且直接定位
 - NAME 某个元素拥有属性，name="wc"
-- XPATH eg : //*/div[@id="yes" and @class="no"]/parent::div/a[contians(text(),"新闻")]/following-sibling::*[1]
+- XPATH eg : ///div[@id="yes" and @class="no"]/parent::div/a[contians(text(),"新闻")]/following-sibling::*[1]
 - CSS eg : div#yes>div.no a
 - LINK_TEXT 精确文本匹配
 - PARTIAL_LINK 模糊匹配
@@ -203,7 +243,11 @@ if __name__=="__main__":
 
 - ###### 隐式等待（driver.implicitly_wait(10)）全局设置，找元素时最多轮寻10秒
 
-- ###### 显示等待（WebDriverWait(driver,10,0.5).until(EC.presence_of_element_located((By.ID,"wc")))）
+- ##### 显示等待（WebDriverWait(driver,10,0.5).until(EC.presence_of_element_located((By.ID,"wc")))）
+
+##### 9. iframe
+
+借助开发者工具，找到框的最大范围，iframe就在附近。
 
 #### 常用方法：
 
@@ -223,3 +267,4 @@ import os
 os.makedirs(./dir1,exists_ok=True) # 存在则不创建
 ```
 
+//div[@id="ai-bubble-container"]//following-sibling::*/img
