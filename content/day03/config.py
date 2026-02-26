@@ -1,5 +1,7 @@
 from selenium.webdriver.chrome.options import Options
 
+user='*****'
+password='adafafge'
 options=Options()
 options.add_argument('--start-maximized')
 options.add_argument('--disable-blink-features=AutomationControlled') ## 隐藏自动化特征
