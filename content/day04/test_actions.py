@@ -242,6 +242,7 @@ def test_file_upload():
             # 该方法适用于多平台
             dr.save_screenshot(os.path.join('error_screenshot','error_screenshot.png'))
         raise
+    # 测试函数需要raise 且在这之前需要打印堆栈，知道错在哪里，最后是Exception兜底如果前面的错误类型都不是；如果匹配到了就会跳出
     finally:
         # 在哪一个函数里创建的dr, 就该在哪一个函数里关闭
         # 无论失败还是成功，最后一步都是这儿
@@ -261,7 +262,7 @@ def main():
             results.append(f"✅ {test.__name__} 通过")
         except Exception as e:
             results.append(f"❌ {test.__name__} 失败")
-            # 不能raise了，我就是最上层，用于分析谁过了，谁没过，也可以计数
+            # 不能raise了，我就是最上层，用于分析谁过了，谁没过，也可以计数；就是汇总统计，重点是程序不会崩溃
     
     # 最终报告
     print("\n".join(results))
