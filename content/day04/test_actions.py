@@ -10,10 +10,16 @@ def create_dr_wait_action():
         actions=ActionChains(dr)
         return dr,wait,actions
     except Exception as e:
-        raise
+        if dr:
+            dr.quit()
+        raise Exception('创建失败') from e
+        # 此处是工具函数实际上可以不需要的
 def get_element(wait,k_v):
-    return wait.until(EC.element_to_be_clickable(k_v))
+    try:
+        return wait.until(EC.element_to_be_clickable(k_v))
     # 范围又小到大，clickable < visiblity < presence (前面存在，则后面一定存在，且该三条件的判断可以返回值，包括是列表的返回)
+    except Exception as e:
+        raise Exception(f'没有得到{k_v[1]}') from e
 
 
 def test_drag_and_drop():
@@ -38,8 +44,13 @@ def test_drag_and_drop():
         # drag_and_drop是元素到元素，更像人机
         # click_and_hold().move_by_offset().release() 是象素控制，且是相当于当前元素的象素。
         sleep(2)
+    except NoSuchElementException as e:
+        traceback.print_exc()
+        # 测试函数的每一个测试类型都需要有一个堆栈打印，先打印再raise
+        raise NoSuchElementException(f'没有找到匹配元素') from e
+        # 报错会找到对应类型错误返回
+        # 测试函数不像工具函数必须raise有try except
     except Exception as e:
-        print('当前测试方法test_drag_and_drop出问题了')
         traceback.print_exc()
         if dr:
             # 该方法适用于多平台
@@ -263,6 +274,7 @@ def main():
         except Exception as e:
             results.append(f"❌ {test.__name__} 失败")
             # 不能raise了，我就是最上层，用于分析谁过了，谁没过，也可以计数；就是汇总统计，重点是程序不会崩溃
+            # main函数下的except会处理全部报错的函数
     
     # 最终报告
     print("\n".join(results))
@@ -277,6 +289,8 @@ if __name__=='__main__':
 
 # 多个except只会匹配对应类型，但是父类Exception只能放在最后
 # 测试函数需要有raise返回给主函数,主函数有不raise扛事儿的，就是有错有对
+
 # 工具函数（如 get_element）：不捕获 或 捕获后必须添加信息再 raise
 # 测试函数：必须 raise，否则测试框架不知道失败了
 # 入口函数（main）：不 raise，捕获所有异常并生成报告
+
