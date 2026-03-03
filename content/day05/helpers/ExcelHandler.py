@@ -20,9 +20,9 @@ from typing import List,Union,Dict, Generator
 class ExcelHandle():
     def __init__(self,file_path,sheet_name):
         self.base_dir=os.path.dirname(__file__)
-        self.project_path=os.path.join(base_dir)
+        self.project_path=os.path.join(self.base_dir)
 
-        self.data_file=os.path.join(project_path,'data','test_cases.xlsx')
+        self.data_file=file_path
         self.sheet_name=sheet_name
         self.wb=None
         self.sheet=None
@@ -30,7 +30,7 @@ class ExcelHandle():
     def open_pointed_sheet(self):
         try:
             # wb=opx.load_workbook(file,read_only=True)
-            self.wb=opx.load_workbook(self.file)
+            self.wb=opx.load_workbook(self.data_file)
             # 此处设置为只读模式更加节省内存。反正是读数据又不是写数据，只用得到读，然后取值就行。
             if isinstance(self.sheet_name, str):
                 return self.wb, self.wb[self.sheet_name]
@@ -41,16 +41,17 @@ class ExcelHandle():
             
         except Exception as e:
             # 工具函数和主函数不用traceback.print_exc()
-            raise Exception(f':\n没有能成功打开{self.file}的sheet:{self.sheet_name}') from e 
+            raise Exception(f':\n没有能成功打开{self.data_file}的sheet:{self.sheet_name}') from e 
     
     def read_excel_cases(self) -> Generator[Dict,None,None]:
     # Generator 类型注解第一个是yield类型，.send()送入类型，当yield用完返回None
         try:
             # 获取指定sheet内容
-            self.wb,self.sheet=self.open_pointed_sheet(self.data_file,self.sheet_name)
+            self.wb,self.sheet=self.open_pointed_sheet()
             # 逐行遍历cases, 控制行数从第2行开始，列数截止在地7行
             for row in self.sheet.iter_rows(min_row=2,max_col=7,values_only=True):
-                yield {'case_id':row[0],'case_name':row[1],'keyword':row[2],'expected':row[3],'actual':row[4],'status':row[5],'remark':row[6]}
+                if bool(row[0]):  # 或 if any(row_data.values()): 检查全部字段  ，不要空
+                    yield {'case_id':row[0],'case_name':row[1],'keyword':row[2],'expected':row[3],'actual':row[4],'status':row[5],'remark':row[6]}
                 # yield生成器针对大文本数据，可以逐行读取，而不是以下全部
         except Exception as e:
             # 这个函数在这儿算作主要的工具函数，出错还是需要打印错误吧？
@@ -60,35 +61,53 @@ class ExcelHandle():
             if self.wb:
                 self.wb.close()
     
-    def write_excel_results(self,datas:List[List]):
+    def write_excel_results(self, datas: List[List]):
+        """
+        追加模式写入Excel：
+        - 第一次调用：写入表头 + 数据
+        - 后续调用：在已有数据后追加新行
+        """
         try:
-            # 获取指定sheet内容
-            self.wb,self.sheet=self.open_pointed_sheet(self.data_file,self.sheet_name)
-            # 配置单元格格式
-            greenfill=PatternFill(start_color='C6EFCE',end_color='C6EFCE',fill_type='solid')
-            redfill=PatternFill(start_color='FFC7CE',end_color='FFC7CE',fill_type='solid')
-            headers = ['case_id', 'case_name', 'keyword', 'expected', 'actual', 'status', 'remark']
-            self.sheet.append(headers)
-            for row_idx,row_data in enumerate(datas):
-                # start=2 表示数字从2开始计数
+            self.wb, self.sheet = self.open_pointed_sheet()
+            
+            # 配置颜色
+            green_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
+            red_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
+            
+            # 判断是否是空表（没有数据，只有表头或完全空白）
+            is_empty = self.sheet.max_row <= 1
+            
+            # 如果是空表，先写入表头
+            if is_empty:
+                headers = ['case_id', 'case_name', 'keyword', 'expected', 'actual', 'status', 'remark']
+                self.sheet.append(headers)
+            
+            # 记录起始行号（用于设置颜色）
+            start_row = self.sheet.max_row + 1
+            
+            # 追加数据
+            for row_data in datas:
                 self.sheet.append(row_data)
-                # 需要先添加再设置格式
-                if len(row_data) > 5 and str(row_data[5]).capitalize()=='Fail':
-                    # 使用数组注意长度
-                    self.sheet.cell(row=row_idx+2,column=6).fill=redfill
-                elif len(row_data) > 5 and str(row_data[5]).capitalize()=='Pass':
-                    self.sheet.cell(row=row_idx+2,column=6).fill=greenfill
-                    # sheet.cell从下表1开始，去除headers就该是从2开始
-                else:
-                        pass
+            
+            # 设置颜色（针对刚追加的行）
+            for i, row_data in enumerate(datas):
+                current_row = start_row + i
+                if len(row_data) > 5:
+                    status = str(row_data[5]).capitalize()
+                    cell = self.sheet.cell(row=current_row, column=6)  # 第6列是status
+                    
+                    if status == 'Fail':
+                        cell.fill = red_fill
+                    elif status == 'Pass':
+                        cell.fill = green_fill
+            
+            # 保存（注意：追加模式也要保存）
+            self.wb.save(self.data_file)
+            print(f"成功追加 {len(datas)} 条数据，当前共 {self.sheet.max_row-1} 行数据（含表头）")
+            
         except Exception as e:
-            # 这个函数在这儿算作主要的工具函数，出错还是需要打印错误吧？
             traceback.print_exc()
-            raise Exception('数据没能成功写入') from e
+            raise Exception('数据追加失败') from e
         finally:
             if self.wb:
-                self.sheet.delete_rows(1, sheet.max_row)
-                # 清除数据，在保存
-                self.wb.save(data_file)
-                # 直接保存覆盖
                 self.wb.close()

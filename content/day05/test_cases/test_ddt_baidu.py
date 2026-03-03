@@ -134,29 +134,35 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+base_dirname=os.path.dirname(__file__)
+project_name=os.path.dirname(base_dirname)
+report_path=os.path.join(project_name,'reports','report.html')
+file_path=os.path.join(project_name,'data','test_cases.xlsx')
+
 class TestBaiduDDT(object):
 
     @pytest.fixture(scope='function')
     # @pyetest.mark.fixture定义当前方法的适用范围（每一个测试方法都需要单独开启一个dr）
-    def driver_config(self):
+    def dr(self):       #### 该fixture的函数名，需要出现在需要测试的且需要的函数的形参中且同名
         # 类中的函数
-        option=Options()
-        option.add_argument('--star-maximized')
+        options=Options()
+        options.add_argument('--start-maximized')
         
-        dr=webdriver.Chrome(options=options)
+        dr=webdriver.Chrome(options=options)    
         # 方法里定义属性
-        yield dr
+        yield dr    
         # 有谁在用，就支持谁，同时交出指挥权，就像调用别的方法而已，暂时做别的
         dr.quit()
         # 没人用，最后就关闭
-
-    def get_excel_data():
-        real_excel=ExcelHandle(file_path,0)
+    @staticmethod
+    # 工具
+    def get_excel_data(file_path,id):  # 有self只能实例使用
+        real_excel=ExcelHandle(file_path,id)
         return real_excel.read_excel_cases()
 
     @pytest.mark.parametrize('rows',get_excel_data(file_path,0))
     # 需要与形参同名，第二个就是具体数据
-    def test_search_by_excel(dr,rows):
+    def test_search_by_excel(self,dr,rows):
         try:
             # 由于需要使用dr，因此该函数参数需要有dr
             wait=WebDriverWait(dr,10,0.5)
@@ -173,35 +179,36 @@ class TestBaiduDDT(object):
             print('已经点击搜索')
             
             actual_result=dr.title
-            expected_result=rows.get('expected_result')
+            expected_result=rows.get('expected')
+            # print(rows)
+            # print(expected_result)
 
             if expected_result in actual_result or actual_result in expected_result:
                 rows['status']='Pass'
-                row['remark']='实际标题包含期望值'
+                rows['remark']='实际标题包含期望值'
             else:
                 rows['status']='Fail'
-                row['remark']=f'实际值是{actual_result},期望值是{expected_result}'
+                rows['remark']=f'实际值是{actual_result},期望值是{expected_result}'
             real_excel=ExcelHandle(file_path,0)
-            real_excel.write_excel_results([rows.values()])
+            # print(rows.values())
+            real_excel.write_excel_results([list(rows.values())])
             assert rows['status']=='Pass',rows['remark']
         except Exception as e:
             real_excel=ExcelHandle(file_path,0)
-            rows['actul_result']='Error'
+            rows['actual']='Error'
             rows['status']='Fail'
             rows['remark']=str(e)
-            real_excel.write_excel_results(rows.values())
+            real_excel.write_excel_results([list(rows.values())])
 
 
 
 
 if __name__=='__main__':
-    base_dirname=os.path.dirname(__file__)
-    project_name=os.path.dirname(base_dirname)
-    report_path=os.path.join(project_name,'repots','report.html')
-    file_path=os.path.join(project_name,'data','test_cases.xlsx')
+    # 单独运行该文件才会执行if __name__=='__main__': 下面的代码，因此供全局使用的变量（全局变量）在最前面定义
     pytest.main([
         __file__,
-        '-v',
-        f'--html={report_path}',
-        '--self-contianed-html'
+        '-v',   # 详细显示
+        f'--html={report_path}',    # 生成html报告
+        '--self-contained-html'     # --self-contianed-html使得报告能都独立出来且正常美观显示
     ])
+    # 
