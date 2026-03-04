@@ -16,6 +16,7 @@ import openpyxl as opx
 from openpyxl.styles import PatternFill
 import os,traceback
 from typing import List,Union,Dict, Generator
+from pathlib import Path
 
 class ExcelHandle():
     def __init__(self,file_path,sheet_name):
@@ -82,24 +83,26 @@ class ExcelHandle():
                 headers = ['case_id', 'case_name', 'keyword', 'expected', 'actual', 'status', 'remark']
                 self.sheet.append(headers)
             
-            # 记录起始行号（用于设置颜色）
-            start_row = self.sheet.max_row + 1
+
             
             # 追加数据
             for row_data in datas:
                 self.sheet.append(row_data)
             
-            # 设置颜色（针对刚追加的行）
-            for i, row_data in enumerate(datas):
-                current_row = start_row + i
-                if len(row_data) > 5:
-                    status = str(row_data[5]).capitalize()
-                    cell = self.sheet.cell(row=current_row, column=6)  # 第6列是status
+            for row_data in datas:
+                current_row = int(row_data[0][2:]) + 1  # 计算目标行号
+                
+                # 直接整行覆盖：sheet[current_row] 返回该行的所有 Cell 对象
+                for cell, value in zip(self.sheet[current_row], row_data):
+                    cell.value = value
+                    # 如果需要设置颜色，可以在这里判断
+                    if cell.column == 6:  # 第6列是 status
+                        status = str(value).capitalize() if value else ""
+                        if status == 'Fail':
+                            cell.fill = red_fill
+                        elif status == 'Pass':
+                            cell.fill = green_fill
                     
-                    if status == 'Fail':
-                        cell.fill = red_fill
-                    elif status == 'Pass':
-                        cell.fill = green_fill
             
             # 保存（注意：追加模式也要保存）
             self.wb.save(self.data_file)
@@ -111,3 +114,19 @@ class ExcelHandle():
         finally:
             if self.wb:
                 self.wb.close()
+
+
+if __name__=='__main__':
+    # print(__name__)
+    # print(__file__)
+    # print(__package__)
+    # print(__import__)
+    # print(__doc__)
+    project_path=Path(__file__).resolve().parent.parent
+    data_path=os.path.join(project_path,'data')
+    date_file=os.path.join(data_path,'test_cases.xlsx')
+    excel=ExcelHandle(date_file,0)
+    datas=[]
+    for data in excel.read_excel_cases():
+        datas.append(list(data.values()))
+    excel.write_excel_results(datas)

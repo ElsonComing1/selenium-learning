@@ -407,3 +407,17 @@ WebDriverFactory.update_default_options(headless=True, timeout=30)
 
 总结：对象(个人特点) 的 工具（@classmethod） 能 管理全部（cls=类名）
 
+##### 5. pathlib
+
+```python
+from pathlib import Path
+base_dir=Path(__file__).resolve().parent.parent
+file_path=base_dir / 'data' / 'test_cases.xlsx'
+```
+
+##### 6. POM(page object model)
+
+页面对象+测试逻辑(元素定位+测试逻辑)+数据；把每个页面封装成"页面对象"，元素定位集中管理；只关心"做什么"，不关心"怎么做"。
+
+![](../picturs/4.png)
+
