@@ -3,8 +3,8 @@ from pathlib import Path
 
 
 
-PROJECT_PATH=Path(__file__).resolve().parent.parent
-REPORT_PATH=os.path.join(PROJECT_PATH,'report')
+PROJECT_PATH=str(Path(__file__).resolve().parent.parent)
+REPORT_PATH=str(os.path.join(PROJECT_PATH,'report'))
 ERROR_SCREENSHOT_PATH=os.path.join(PROJECT_PATH,'error_screenshot')
 
 sys.path.insert(0,str(PROJECT_PATH))
@@ -81,21 +81,27 @@ class PageBase:
 
     @error_screenshot(ERROR_SCREENSHOT_PATH)
     def find_clickable_element(self,element_located:Locater) -> WebElement:
+        sleep(3)
         return self.wait.until(EC.element_to_be_clickable(element_located))
 
 
     def click_element(self,locater:Locater)->None:
+        sleep(3)
         self.find_clickable_element(locater).click()
 
     def input_text(self,locater:Locater,searched_text)->None:
         element=self.find_clickable_element(locater)
         # 需要先选中，然后清空原有值，最后再输入搜索文本
         element.click()
+        sleep(3)
         element.clear()
+        sleep(3)
         element.send_keys(searched_text)
+        sleep(3)
 
     def move_to_element(self,locator:Locater):
-        self.action.move_to_element(self.find_clickable_element(locator)).perform
+        self.action.move_to_element(self.find_clickable_element(locator)).perform()
+        return self
 
 
     @error_screenshot(ERROR_SCREENSHOT_PATH)
@@ -111,4 +117,6 @@ class PageBase:
             return True
         else:
             return False
-        
+    
+    def get_title(self):
+        return self.driver.title

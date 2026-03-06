@@ -12,11 +12,15 @@ class BaiduPage(PageBase):
     '''
     # 元素定位
     text_frame_locator=(By.ID,'chat-textarea')
-    search_button_locator=(By.ID,'chat-submit-button')
+    search_button_locator=(By.LINK_TEXT,'百度一下')
+    # text_frame_locator=(By.ID,'kw')
+    # search_button_locator=(By.ID,'su')
     tieba_locator=(By.XPATH,'//div[@id="s-top-left"]/a[4]')
     settings_locator=(By.XPATH,'//div[@id="u1"]/a')
+    body_locator=(By.TAG_NAME,'body')
+    # 以上变量，要么是实例self.变量获取（实例属性），要么类名.变量获取（类属性），不能直接变量。只有两种
 
-    def open_home_page(self,url:str):
+    def open_target_page(self,url:str):
         if url:
             self.open_url(url)
             # 该文件的重点，链式调用，没有别的返回值或者状态判断，就返回self
@@ -27,18 +31,24 @@ class BaiduPage(PageBase):
     
     def search_content(self,key_word:str):
         # 形象的方法就不用将locator再作为参数传入，本类里已有
-        self.input_text(text_frame_locator,key_word)
-        self.click_element(search_button_locator)
+        self.input_text(self.text_frame_locator,key_word)
+        self.click_element(self.body_locator)
+        self.switch_to_default()
+        self.click_element(self.search_button_locator)
         return self
         # 没有具体的值需要返回就直接返回self(当前对象所在进度)
 
     def open_settings(self):
-        if self.is_diplayed(settings_locator):
-            self.move_to_element(settings_locator)
+        if self.is_diplayed(self.settings_locator):
+            self.move_to_element(self.settings_locator).click_element(self.settings_locator)
         else:
-            raise ValueError(f'没有发现该元素{settings_locator}')
+            raise ValueError(f'没有发现该元素{self.settings_locator}')
 
-
+    def get_search_text(self):
+        text=self.get_attribute_value(self.text_frame_locator,'value')
+        return text
+    
+        
 
 
 

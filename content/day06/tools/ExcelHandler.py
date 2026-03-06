@@ -61,10 +61,10 @@ class ExcelHandler(object):
 
     @common_exception
     # 对文件只是读取内容就不用再进行save
-    def read_point_sheet_rows(self,sheet_name:Union[str,int]=0):
+    def read_point_sheet_rows(self,sheet_name:Union[str,int]=0)->List[List]:
         self.create_wb_sheet(sheet_name)
         all_data=[]
-        for row in self.sheet.iter_rows(min_row=1,values_only=True):
+        for row in self.sheet.iter_rows(min_row=2,max_col=7,values_only=True):
             # values_only直接返回值
             if  bool(row[0]):
                 all_data.append(list(row))
@@ -76,6 +76,7 @@ class ExcelHandler(object):
         try:
             green_fill=PatternFill(start_color='00FF00',end_color='00FF00',fill_type='solid')
             red_fill=PatternFill(start_color='ff0000',end_color='ff0000',fill_type='solid')
+            yellow_fill=PatternFill(start_color='FFD700',end_color='FFD700',fill_type='solid')
             # 对单元格格式预先颜色格式设置
             self.create_wb_sheet(sheet_name)
             # 获取最大有效函数和列数，下表从1开始
@@ -93,7 +94,7 @@ class ExcelHandler(object):
                 # excel_col1_cell.value=''  赋值
                 for index,row_value in enumerate(data):
                     # 通过表格的第一列的primary_key来进行匹配，匹配成则进行颜色的填充以及值得填补
-                    # print(cell_value,row_value[0])
+                    print(cell_value,row_value[0])
                     if cell_value == row_value[0]:
                         # print(1)
                         self.sheet.cell(row=i,column=5).value=row_value[4]
@@ -105,8 +106,10 @@ class ExcelHandler(object):
                         if str(status_value)=='Pass':
                             self.sheet.cell(row=i,column=6).fill=green_fill
                         elif str(status_value)=='Fail':
-                            self.sheet.cell(row=i,column=6).fill=red_fill
+                            self.sheet.cell(row=i,column=6).fill=yellow_fill
                         # break目的是为了不必要的循环，当前匹配，那么后面绝不会再匹配，也就没必要继续
+                        elif str(status_value)=='Error':
+                            self.sheet.cell(row=i,column=6).fill=red_fill
                         break
         except Exception as e:
             raise e
@@ -124,12 +127,12 @@ if __name__=='__main__':
     excel=ExcelHandler(DATA_FILE_PATH)
     # 数字从下标0开始
     data=excel.read_point_sheet_rows(0)
-    # print(data)
-    for i,value in enumerate(data):
-        # print(value)
-        if i%2==0 and i!=0:
-            value[5]='Pass'
-        elif i%2!=0 and i!=0:
-            value[5]='Fail'
-    # print(data)
-    excel.cover_write_point_sheet(0,data)
+    print(data)
+    # for i,value in enumerate(data):
+    #     # print(value)
+    #     if i%2==0 and i!=0:
+    #         value[5]='Pass'
+    #     elif i%2!=0 and i!=0:
+    #         value[5]='Fail'
+    # # print(data)
+    # excel.cover_write_point_sheet(0,data)
