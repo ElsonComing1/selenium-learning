@@ -73,49 +73,82 @@ class ExcelHandler(object):
     
     
     def cover_write_point_sheet(self,sheet_name,data:List[list]):
+        '''使用字典映射：首先需要有一个字典，然后判断关键字是不是在字典key中（直接判断），如果在，则可以直接使用字典改变其值。记住，字典的数据是重要的数据（最终保存数据）'''
         try:
+            # 创建重要的数据的字典：O(n)
+            # 带有条件判断，在关键字部位None条件下，最外层的括号是类型转换
+            data_dict={row[0]:row for row in data if row[0]}
+
             green_fill=PatternFill(start_color='00FF00',end_color='00FF00',fill_type='solid')
             red_fill=PatternFill(start_color='ff0000',end_color='ff0000',fill_type='solid')
             yellow_fill=PatternFill(start_color='FFD700',end_color='FFD700',fill_type='solid')
-            # 对单元格格式预先颜色格式设置
+            # 创建填充颜色字典        
+            map_color={
+                'Pass':green_fill,
+                'Error':red_fill,
+                'Fail':yellow_fill
+            }
             self.create_wb_sheet(sheet_name)
-            # 获取最大有效函数和列数，下表从1开始
             row_num=self.sheet.max_row
-            # col_num=self.sheet.max_column
-            for i in range(2,row_num+2):
-                # 寻找指定单元格通过数字指定均从下表1开始，除了worksheets是从0开始
-                excel_col1_cell=self.sheet.cell(row=i,column=1)
-                # 获取值
-                cell_value=excel_col1_cell.value
-                # 获取当前单元格的行（数字）
-                row_id=excel_col1_cell.row
-                # 获取当前单元格的列（数字）
-                col_id=excel_col1_cell.col_idx
-                # excel_col1_cell.value=''  赋值
-                for index,row_value in enumerate(data):
-                    # 通过表格的第一列的primary_key来进行匹配，匹配成则进行颜色的填充以及值得填补
-                    print(cell_value,row_value[0])
-                    if cell_value == row_value[0]:
-                        # print(1)
-                        self.sheet.cell(row=i,column=5).value=row_value[4]
-                        self.sheet.cell(row=i,column=6).value=row_value[5]
-                        self.sheet.cell(row=i,column=7).value=row_value[6]
-                        
-                        status_value=str(row_value[5]).lower().capitalize()
-                        print(status_value)
-                        if str(status_value)=='Pass':
-                            self.sheet.cell(row=i,column=6).fill=green_fill
-                        elif str(status_value)=='Fail':
-                            self.sheet.cell(row=i,column=6).fill=yellow_fill
-                        # break目的是为了不必要的循环，当前匹配，那么后面绝不会再匹配，也就没必要继续
-                        elif str(status_value)=='Error':
-                            self.sheet.cell(row=i,column=6).fill=red_fill
-                        break
+            # 从第二行开始
+            for i in range(2,row_num+1):
+                case_id=self.sheet.cell(row=i,column=1).value
+                if case_id in data_dict:
+                    row=data_dict[case_id]
+                    self.sheet.cell(row=i,column=5).value=row[4]
+                    self.sheet.cell(row=i,column=6).value=row[5]
+                    self.sheet.cell(row=i,column=7).value=row[6]
+                    status=str(row[5]).capitalize()
+                    if status in map_color:
+                        self.sheet.cell(row=i,column=6).fill=map_color[status]
         except Exception as e:
-            raise e
+            raise type(e)(f'没能成功数据匹配写入，原因如下：{e}')
         finally:
-            # 写表格记得保存进工作簿
             self.wb.save(self.file_path)
+
+        # try:
+        #     green_fill=PatternFill(start_color='00FF00',end_color='00FF00',fill_type='solid')
+        #     red_fill=PatternFill(start_color='ff0000',end_color='ff0000',fill_type='solid')
+        #     yellow_fill=PatternFill(start_color='FFD700',end_color='FFD700',fill_type='solid')
+        #     # 对单元格格式预先颜色格式设置
+        #     self.create_wb_sheet(sheet_name)
+        #     # 获取最大有效函数和列数，下表从1开始
+        #     row_num=self.sheet.max_row
+        #     # col_num=self.sheet.max_column
+        #     for i in range(2,row_num+2):
+        #         # 寻找指定单元格通过数字指定均从下表1开始，除了worksheets是从0开始
+        #         excel_col1_cell=self.sheet.cell(row=i,column=1)
+        #         # 获取值
+        #         cell_value=excel_col1_cell.value
+        #         # 获取当前单元格的行（数字）
+        #         row_id=excel_col1_cell.row
+        #         # 获取当前单元格的列（数字）
+        #         col_id=excel_col1_cell.col_idx
+        #         # excel_col1_cell.value=''  赋值
+        #         for index,row_value in enumerate(data):
+        #             # 通过表格的第一列的primary_key来进行匹配，匹配成则进行颜色的填充以及值得填补
+        #             # print(cell_value,row_value[0])
+        #             if cell_value == row_value[0]:
+        #                 # print(1)
+        #                 self.sheet.cell(row=i,column=5).value=row_value[4]
+        #                 self.sheet.cell(row=i,column=6).value=row_value[5]
+        #                 self.sheet.cell(row=i,column=7).value=row_value[6]
+                        
+        #                 status_value=str(row_value[5]).lower().capitalize()
+        #                 # print(status_value)
+        #                 if str(status_value)=='Pass':
+        #                     self.sheet.cell(row=i,column=6).fill=green_fill
+        #                 elif str(status_value)=='Fail':
+        #                     self.sheet.cell(row=i,column=6).fill=yellow_fill
+        #                 # break目的是为了不必要的循环，当前匹配，那么后面绝不会再匹配，也就没必要继续
+        #                 elif str(status_value)=='Error':
+        #                     self.sheet.cell(row=i,column=6).fill=red_fill
+        #                 break
+        # except Exception as e:
+        #     raise e
+        # finally:
+        #     # 写表格记得保存进工作簿
+        #     self.wb.save(self.file_path)
 
 
 # 单独运行时，才会调用该脚本，其他时候只会用上面的内容

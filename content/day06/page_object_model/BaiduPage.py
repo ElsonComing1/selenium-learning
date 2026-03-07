@@ -1,4 +1,4 @@
-from PageBase import *
+from .PageBase import *
 
 PROJECT_PATH=Path(__file__).resolve().parent.parent
 
@@ -12,12 +12,18 @@ class BaiduPage(PageBase):
     '''
     # 元素定位
     text_frame_locator=(By.ID,'chat-textarea')
-    search_button_locator=(By.LINK_TEXT,'百度一下')
+    search_button_locator=(By.ID,'chat-submit-button')
     # text_frame_locator=(By.ID,'kw')
     # search_button_locator=(By.ID,'su')
     tieba_locator=(By.XPATH,'//div[@id="s-top-left"]/a[4]')
-    settings_locator=(By.XPATH,'//div[@id="u1"]/a')
+    settings_locator=(By.XPATH,'//div[@id="u1"]/span')
     body_locator=(By.TAG_NAME,'body')
+
+    user_name_locator=(By.ID,'userName')
+    password_locator=(By.ID,'password')
+    login_button_locator=(By.ID,'login')
+    result_check_locator=(By.ID,'name')
+    # 该类的全部方法需要将以上的locator包含完
     # 以上变量，要么是实例self.变量获取（实例属性），要么类名.变量获取（类属性），不能直接变量。只有两种
 
     def open_target_page(self,url:str):
@@ -31,22 +37,42 @@ class BaiduPage(PageBase):
     
     def search_content(self,key_word:str):
         # 形象的方法就不用将locator再作为参数传入，本类里已有
-        self.input_text(self.text_frame_locator,key_word)
-        self.click_element(self.body_locator)
-        self.switch_to_default()
-        self.click_element(self.search_button_locator)
-        return self
+        self.move_to_element(self.text_frame_locator).input_text(self.text_frame_locator,key_word)
+        # self.input_text(self.text_frame_locator,key_word)
+        self.move_to_element(self.search_button_locator).click_element(self.search_button_locator)
+        # sleep(3)
+        if self.check_title(key_word):
+            return self
+        return None
         # 没有具体的值需要返回就直接返回self(当前对象所在进度)
 
     def open_settings(self):
         if self.is_diplayed(self.settings_locator):
-            self.move_to_element(self.settings_locator).click_element(self.settings_locator)
+            if self.move_to_element(self.settings_locator):
+                self.click_element(self.settings_locator)
+                sleep(3)
+            else:
+                raise
+            return self
         else:
             raise ValueError(f'没有发现该元素{self.settings_locator}')
 
     def get_search_text(self):
         text=self.get_attribute_value(self.text_frame_locator,'value')
         return text
+
+    def get_result_text(self):
+        text=self.find_element(self.result_check_locator).text
+        return text
+
+    def login_to_target(self,username,passwd):
+        self.input_text(self.user_name_locator,username)
+        sleep(1)
+        self.input_text(self.password_locator,passwd)
+        sleep(1)
+        self.click_element(self.login_button_locator)
+        sleep(1)
+        return self
     
         
 
