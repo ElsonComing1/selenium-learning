@@ -3,3 +3,4 @@ webdriver-manager==4.0.1
 pytest==7.4.3
 openpyxl
 pytest-html
+allure-pytest

@@ -413,21 +413,433 @@ WebDriverFactory.update_default_options(headless=True, timeout=30)
 from pathlib import Path
 base_dir=Path(__file__).resolve().parent.parent
 file_path=base_dir / 'data' / 'test_cases.xlsx'
+# 兼容跨平台
 ```
 
 ##### 6. POM(page object model)
 
 页面对象+测试逻辑(元素定位+测试逻辑)+数据；把每个页面封装成"页面对象"，元素定位集中管理；只关心"做什么"，不关心"怎么做"。
 
-- step1：基础方法包装（基础类）库
+- step1：基础方法包装（基础类）库（单一动作）
 
-- step2：元素+动作（继承基础类）页面	
+- step2：元素+动作（继承基础类）页面（单一动作构成某一步骤）
 
   return self ：方法链式调用，调用方法不用重复写实例变量；只有在返回具体指以及状态时才不用返回slef(当前对象所在进度)
 
   ![](../picturs/4.png)
 
-- step3：组装动——>流程（test类）测试案列
+- step3：组装动——>流程（test类）测试案列（组织步骤构成测试流程逻辑）
+
+##### 7. 返回值类型不确定时，如何写类型注解？
+
+- 任何类型都可能返回：
+
+```python
+from typing import Any
+# 任何可能下选一
+def get_config(key: str) -> Any:
+    # 可能返回 str, int, list, dict...
+    return json.loads(config_file[key])
+```
+
+- 已知有限范围的类型：
+
+```python
+from typing import Union
+# 给定范围多选一
+def parse_value(value: str) -> Union[int, float, str, bool]:
+    # 可能是整数、浮点、字符串或布尔
+    if value.isdigit():
+        return int(value)
+    if value.replace('.', '').isdigit():
+        return float(value)
+    if value in ('True', 'False'):
+        return value == 'True'
+    return value
+```
+
+- 二选一
+
+```python
+from typing import Optional
+def find_element(locator: tuple) -> Optional[WebElement]:
+    try:
+        return driver.find_element(*locator)
+    except NoSuchElementException:
+        # return 与rasie不可以一起使用，必须存在，但没有就得抛出问题异常，pytest处理
+        return None  # 明确返回 None，可用于判断某个元素是否存在，不存在(异常)则返回None
+# 使用时要判空：
+element = find_element((By.ID, "kw"))
+if element is not None:  # 类型检查器会收窄类型为 WebElement
+    element.click()
+    
+```
+
+- 泛型，任意类型
+
+```python
+from typing import TypeVar,List
+T = TypeVar('T')  # 泛型，可以是任意类型
+
+def get_first_item(items: List[T]) -> Optional[T]:
+    """不管列表里是什么类型，返回同类型或 None"""
+    return items[0] if items else None
+# 使用：
+numbers: List[int] = [1, 2, 3]
+first_num = get_first_item(numbers)  # 推断为 Optional[int]
+
+names: List[str] = ["a", "b"]
+first_name = get_first_item(names)  # 推断为 Optional[str]
+```
+
+- 自定义固定值
+
+```python
+from typing import Optional,Literal
+Locater = tuple[str, str]
+
+class PageBase:
+    def find_element(self, locator: Locater) -> Optional[WebElement]:
+        """可能找不到，返回 Optional"""
+        try:
+            return self.wait.until(EC.presence_of_element_located(locator))
+        except TimeoutException:
+            return None
+    
+    def get_status(self) -> Literal["success", "fail", "pending"]:
+        """只能是这三个字符串之一"""
+        # Literal 是 Python 3.8+ 的特性，用于限定取值范围
+        return "success"
+```
+
+##### 8. 跨目录导入公共库（最佳实践）
+
+- ###### 小项目：
+
+pytest 会自动加载 `conftest.py` 中的 fixture 和导入，且它所在目录被视为根目录，重点是你所放的位置。
+
+```python
+# conftest.py 支持多层级放置，遵循就近原则（类似 Python 的变量作用域）。
+selenium-learning/                 # 根目录（全局作用域）
+├── conftest.py                    # ← 全局 fixtures：driver、数据库连接、基础配置
+├── fixtures/                # 新建目录，存放各类 fixtures
+│   ├── __init__.py          # 空文件，让 Python 识别为包
+│   ├── db_fixtures.py       # 数据库相关
+│   ├── web_fixtures.py      # 浏览器/UI 相关  
+│   └── data_fixtures.py     # 测试数据相关
+├── config/
+│   └── imports.py
+├── day06/                         # 模块级 作用域
+│   ├── conftest.py                # ← Day6 特有：BaiduPage 初始化、百度 URL 配置
+│   └── test_cases/
+│       ├── conftest.py            # ← 测试级 作用域：Excel 数据预处理、截图路径
+│       └── TestBaiduPOM.py        # 自动继承上级所有 fixtures
+├── day07/                         # 另一个模块
+│   ├── conftest.py                # ← Day7 特有：API 测试的 session、token
+│   └── test_api/
+│       └── TestUserAPI.py
+
+```
+
+| 位置                                      | 有效范围            | 优先级           |
+| ----------------------------------------- | ------------------- | ---------------- |
+| **根目录** `conftest.py`                  | 整个项目            | 最低（兜底）     |
+| **模块级** `day06/conftest.py`            | `day06/` 及其子目录 | 中（覆盖根目录） |
+| **测试级** `day06/test_cases/conftest.py` | 仅该目录下测试文件  | 最高（最优先）   |
+
+conftest.py 根目录就是比模块级更多文件目录，模块级也是管理更多文件目录但是范围比根目录小，测试级比前两者跟小，只管理测试那几个文件，以及还有文件里面的夹具范围最小。如果有重复，范围小的说了算。
+
+被夹具装饰的方法，同名且范围小的覆盖范围大的。同级别启用。autouse=True, 不同名叠加。
+
+```python
+# fixtures/db_fixtures.py
+import pytest
+import pymysql
+
+@pytest.fixture(scope="session")
+def db_connection():
+    """数据库连接（跨测试会话共享）"""
+    conn = pymysql.connect(host="localhost", user="test", password="123456", database="test_db")
+    print("数据库连接已建立")
+    yield conn
+    conn.close()
+    print("数据库连接已关闭")
+
+@pytest.fixture	# 默认function
+def db_cursor(db_connection):
+    """数据库游标（每个测试函数新建）"""
+    cursor = db_connection.cursor()
+    yield cursor
+    cursor.close()
+```
+
+```python
+# conftest.py（项目根目录 模块级）
+import sys
+from pathlib import Path
+
+# 自动将项目根目录加入 Python 路径
+ROOT_DIR = Path(__file__).parent
+sys.path.insert(0, str(ROOT_DIR))
+
+# 预导入常用模块，让测试文件直接可用（可选）
+pytest_plugins = [
+    "fixtures.db_fixtures",    # 对应 fixtures/db_fixtures.py
+    "fixtures.web_fixtures",   # 对应 fixtures/web_fixtures.py
+    "fixtures.data_fixtures",  # 对应 fixtures/data_fixtures.py
+]
+
+# 定义全局 fixture（所有测试文件自动可用）
+import pytest
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+
+@pytest.fixture(scope="session")
+def global_driver():
+    """全局 driver，整个测试会话只启动一次"""
+    options = Options()
+    driver = webdriver.Chrome(options=options)
+    yield driver
+    driver.quit()
+```
+
+- ###### 大项目
+
+pip install -e .（最专业，模拟真实库）
+
+```python
+#创建 setup.py（项目根目录）：
+setup(
+    name="selenium-learning",           # 包名（pip list 中显示的名字）
+    version="0.1",                      # 版本号
+    packages=find_packages(),           # 自动发现所有包（含 __init__.py 的文件夹）
+    install_requires=[                  # 依赖（可选）
+        'selenium>=4.0',
+        'pytest',
+        'openpyxl'
+    ],
+    python_requires='>=3.8',            # Python 版本要求
+)
+```
+
+```bash
+# 在项目根目录（setup.py 所在目录）
+cd C:\Users\...\selenium-learning
+
+# 安装（带 -e 表示开发模式）
+pip install -e .
+# 放一个指向源码目录的链接，创建"软链接"
+
+```
 
 
+
+##### 9. PageFactory
+
+准备：
+
+```python
+# conftest.py  根级
+import pytest
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+
+@pytest.fixture(scope="function")
+def driver():
+    """浏览器驱动 fixture - 这就是上面代码里用的 driver"""
+    options = Options()
+    options.add_argument("--start-maximized")
+    driver = webdriver.Chrome(options=options)
+    yield driver
+    driver.quit()
+```
+
+```python
+# page_factory.py（放在 helpers/ 或 tools/ 下）
+from typing import Type, TypeVar, Dict
+from selenium.webdriver.remote.webdriver import WebDriver
+# 使用的本地webdriver也是继承该类，只不过直接默认本地，该remote.webdriver可以远程控制
+
+# 泛型，表示任何 Page 子类
+T = TypeVar('T', bound='BasePage')
+# 表示T的类型必须是BasePage或者是BasePage的子类
+
+class PageFactory:
+    """
+    页面对象工厂
+    1. 管理 driver 实例
+    2. 缓存已创建的页面对象（避免重复实例化）
+    3. 提供统一的页面切换方法
+    """
+    
+    def __init__(self, driver: WebDriver):
+        self.driver = driver
+        self._pages: Dict[str, object] = {}  # 缓存池
+    
+    def get_page(self, page_class: Type[T]) -> T:
+        """
+        通用获取页面方法
+        用法：baidu = factory.get_page(BaiduPage)
+        """
+        page_name = page_class.__name__
+        
+        # 如果已经创建过，直接返回（单例模式）
+        if page_name not in self._pages:
+            print(f"创建新页面实例: {page_name}")
+            self._pages[page_name] = page_class(self.driver)
+        
+        return self._pages[page_name]
+    	# 已存在该页面类，则不在新创建，直接返回原有的页面类；实现页面类管理
+    
+    def clear_cache(self):
+        """切换测试场景时清空缓存"""
+        self._pages.clear()
+    
+    def remove_page(self, page_class: Type[T]):
+        """移除特定页面缓存（强制重新创建）"""
+        page_name = page_class.__name__
+        if page_name in self._pages:
+            del self._pages[page_name]
+
+# 使用示例（在测试类中，也就是要测试的不同页面，以不同页面为单位来写测试类（页），测试流程）：
+# 尽量做到，基类只给子类使用，子类（方法可同名重写）只给测试类使用。
+from page_object_model.BaiduPage import BaiduPage
+from page_object_model.LoginPage import LoginPage  # 假设你有这个
+
+class TestWorkflow:
+    # 测试级
+    @pytest.fixture(autouse=True)
+    # 自动创建夹具，不用测试方法的参数再次写夹具装饰的方法名，参数driver是conftest下的fixture
+    def setup_factory(self, driver):
+        """每个测试方法自动初始化 factory"""
+        # 自动调用上面创建的页面工厂类
+        self.factory = PageFactory(driver)
+    
+    # 真正测试方法
+    def test_full_workflow(self):
+        # 获取页面（自动缓存）
+        baidu = self.factory.get_page(BaiduPage)
+        baidu.open_target_page("https://www.baidu.com")
+        
+        # 假设点击登录跳转到登录页
+        baidu.click_login()
+        
+        # 由于点击了登录条状，所以接下来需要再次使用工厂类，管理页面。控制不同页面了，如果已经实例化则继续使用旧有的页面类实例，而不是再次创建一个新的页面类。
+        # 获取登录页（factory 自动管理，driver 状态保持一致）
+        login = self.factory.get_page(LoginPage)
+        login.login("username", "password")
+        
+        # 回到百度页（从缓存取，不会重新创建）
+        baidu = self.factory.get_page(BaiduPage)
+        baidu.search("追觅")
+```
+
+##### 10. YAML 配置化
+
+```python
+page_object_model/
+├── configs/
+│   ├── baidu_page.yaml      # 定位符配置
+│   └── login_page.yaml
+├── base_page.py             # 读取 YAML 的基类
+└── baidu_page.py            # 业务方法（无硬编码定位符）
+```
+
+```yaml
+#baidu_page.yaml：
+百度首页:
+  搜索框: {by: "id", value: "kw"}
+  搜索按钮: {by: "id", value: "su"}
+  设置链接: {by: "link text", value: "设置"}
+```
+
+```python
+# 对basePage进行方法添加
+# base_page.py
+import yaml
+from pathlib import Path
+from selenium.webdriver.common.by import By
+
+# 可以单独提一页
+class ConfigurablePage:
+    """支持 YAML 配置的基类"""
+    
+    def __init__(self, yaml_file: str):
+        self.locators = self._load_locators(yaml_file)
+    
+    def _load_locators(self, yaml_file: str) -> dict:
+        """加载 YAML 定位符"""
+        config_path = Path(__file__).parent / "configs" / yaml_file
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        # 扁平化配置（把嵌套字典转成 {name: (by, value)}）
+        locators = {}
+        for page_name, elements in config.items():
+            for elem_name, locator in elements.items():
+                locators[elem_name] = (locator['by'], locator['value'])
+        return locators
+    
+    def get_locator(self, name: str) -> tuple:
+        """获取定位符"""
+        if name not in self.locators:
+            raise KeyError(f"未找到元素 '{name}' 的定位配置，请检查 YAML 文件")
+        by, value = self.locators[name]
+        # 字符串转 By 对象
+        by_map = {
+            'id': By.ID, 'name': By.NAME, 'class': By.CLASS_NAME,
+            'xpath': By.XPATH, 'css': By.CSS_SELECTOR,
+            'link text': By.LINK_TEXT, 'partial link text': By.PARTIAL_LINK_TEXT
+        }
+        return (by_map.get(by, By.ID), value)
+
+# 使用（BaiduPage 变得超级简洁）：
+# BaiduPage继承多个父类，分别使用父类的初始化
+class BaiduPage(ConfigurablePage,BasePage):
+    def __init__(self,yaml_file:str='element_locator.yaml',driver:webdriver):
+       ConfigurablePage.__init__(yaml_file)
+    	BasePage.__init__(driver)
+        #如果 PageBase 和 ConfigurablePage 都有 self.driver，后初始化的会覆盖前面的。
+    
+    def search(self, keyword: str):
+        # 不再写死 (By.ID, "kw")，而是从 YAML 读取
+        self.find("搜索框").send_keys(keyword)
+        self.find("搜索按钮").click()
+```
+
+##### 11. 自定义标记
+
+```python
+# conftest.py 注册标记（避免警告）
+def pytest_configure(config):
+    config.addinivalue_line("markers", "slow: marks tests as slow")
+    config.addinivalue_line("markers", "smoke: marks tests as smoke tests")
+
+# 测试文件中使用：
+@pytest.mark.smoke  # 冒烟测试
+def test_critical_path():
+    pass
+
+@pytest.mark.slow   # 慢测试（可能跳过）
+def test_heavy_load():
+    pass
+
+# 命令行只跑冒烟测试：
+# pytest -v -m "smoke"
+# 排除慢测试支持正则，逻辑表达式：
+# pytest -v -m "not slow"
+
+```
+
+##### 12. 失败重试（flaky 测试处理）
+
+```bash
+pip install pytest-rerunfailures
+```
+
+```python
+@pytest.mark.flaky(reruns=3, reruns_delay=1)  # 失败重试 3 次，间隔 1 秒
+def test_unstable_feature():
+    # 可能不稳定的测试（如网络抖动）
+    assert random.choice([True, False])
+```
 
