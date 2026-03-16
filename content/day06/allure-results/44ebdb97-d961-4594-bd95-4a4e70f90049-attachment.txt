@@ -1,0 +1,221 @@
+用例：test_cases/TestBaiduPOM.py::TestBaiduPom::test_data_driven_search[data4]
+错误：self = <tools.ExcelHandler.ExcelHandler object at 0x000001FBD0346300>
+sheet_name = 0, data = [['TC005', '搜索美女', '美女', '美女', '美女_百度搜索', 'Pass', ...]]
+
+    def cover_write_point_sheet(self,sheet_name,data:List[list]):
+        '''使用字典映射：首先需要有一个字典，然后判断关键字是不是在字典key中（直接判断），如果在，则可以直接使用字典改变其值。记住，字典的数据是重要的数据（最终保存数据）'''
+        try:
+            # 创建重要的数据的字典：O(n)
+            # 带有条件判断，在关键字部位None条件下，最外层的括号是类型转换
+            data_dict={row[0]:row for row in data if row[0]}
+    
+            green_fill=PatternFill(start_color='00FF00',end_color='00FF00',fill_type='solid')
+            red_fill=PatternFill(start_color='ff0000',end_color='ff0000',fill_type='solid')
+            yellow_fill=PatternFill(start_color='FFD700',end_color='FFD700',fill_type='solid')
+            # 创建填充颜色字典
+            map_color={
+                'Pass':green_fill,
+                'Error':red_fill,
+                'Fail':yellow_fill
+            }
+>           self.create_wb_sheet(sheet_name)
+
+tools\ExcelHandler.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tools\ExcelHandler.py:23: in wrapper
+    raise e
+tools\ExcelHandler.py:18: in wrapper
+    return func(*args,**kargs)
+tools\ExcelHandler.py:37: in create_wb_sheet
+    self.wb=openpyxl.load_workbook(self.file_path)
+D:\Python312\Lib\site-packages\openpyxl\reader\excel.py:346: in load_workbook
+    reader = ExcelReader(filename, read_only, keep_vba,
+D:\Python312\Lib\site-packages\openpyxl\reader\excel.py:123: in __init__
+    self.archive = _validate_archive(fn)
+D:\Python312\Lib\site-packages\openpyxl\reader\excel.py:95: in _validate_archive
+    archive = ZipFile(filename, 'r')
+D:\Python312\Lib\zipfile\__init__.py:1349: in __init__
+    self._RealGetContents()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <zipfile.ZipFile [closed]>
+
+    def _RealGetContents(self):
+        """Read in the table of contents for the ZIP file."""
+        fp = self.fp
+        try:
+            endrec = _EndRecData(fp)
+        except OSError:
+            raise BadZipFile("File is not a zip file")
+        if not endrec:
+>           raise BadZipFile("File is not a zip file")
+E           zipfile.BadZipFile: File is not a zip file
+
+D:\Python312\Lib\zipfile\__init__.py:1416: BadZipFile
+
+During handling of the above exception, another exception occurred:
+
+self = <tools.ExcelHandler.ExcelHandler object at 0x000001FBD0346300>
+sheet_name = 0, data = [['TC005', '搜索美女', '美女', '美女', '美女_百度搜索', 'Pass', ...]]
+
+    def cover_write_point_sheet(self,sheet_name,data:List[list]):
+        '''使用字典映射：首先需要有一个字典，然后判断关键字是不是在字典key中（直接判断），如果在，则可以直接使用字典改变其值。记住，字典的数据是重要的数据（最终保存数据）'''
+        try:
+            # 创建重要的数据的字典：O(n)
+            # 带有条件判断，在关键字部位None条件下，最外层的括号是类型转换
+            data_dict={row[0]:row for row in data if row[0]}
+    
+            green_fill=PatternFill(start_color='00FF00',end_color='00FF00',fill_type='solid')
+            red_fill=PatternFill(start_color='ff0000',end_color='ff0000',fill_type='solid')
+            yellow_fill=PatternFill(start_color='FFD700',end_color='FFD700',fill_type='solid')
+            # 创建填充颜色字典
+            map_color={
+                'Pass':green_fill,
+                'Error':red_fill,
+                'Fail':yellow_fill
+            }
+            self.create_wb_sheet(sheet_name)
+            row_num=self.sheet.max_row
+            # 从第二行开始
+            for i in range(2,row_num+1):
+                case_id=self.sheet.cell(row=i,column=1).value
+                if case_id in data_dict:
+                    row=data_dict[case_id]
+                    self.sheet.cell(row=i,column=5).value=row[4]
+                    self.sheet.cell(row=i,column=6).value=row[5]
+                    self.sheet.cell(row=i,column=7).value=row[6]
+                    status=str(row[5]).capitalize()
+                    if status in map_color:
+                        self.sheet.cell(row=i,column=6).fill=map_color[status]
+        except Exception as e:
+>           raise type(e)(f'没能成功数据匹配写入，原因如下：{e}')
+E           zipfile.BadZipFile: 没能成功数据匹配写入，原因如下：File is not a zip file
+
+tools\ExcelHandler.py:105: BadZipFile
+
+During handling of the above exception, another exception occurred:
+
+self = <TestBaiduPOM.TestBaiduPom object at 0x000001FBD03B8F20>
+driver = <selenium.webdriver.edge.webdriver.WebDriver (session="08675db1faf069c3bb26ff44029def72")>
+data = ['TC005', '搜索美女', '美女', '美女', '美女_百度搜索', 'Pass', ...]
+
+    @allure.story('不同关键字搜索')
+    # 使用feature story也就是对该测试类或者测试方法的名字进行翻译解释用途
+    # @allure.severity(allure.severity_level.BLOCKER) 由于类已经设置过级别，所以内部方法不用再设置
+    @pytest.mark.parametrize("data", get_data(data_file, 0))
+    @allure.description('通过百度首页，搜索不通关键字，然后判断搜索后的页面主题是否包含对应的关键字')
+    @pytest.mark.flaky(reruns=2,reruns_delay=3,only_rerun=["TimeoutException"])
+    def test_data_driven_search(self, driver, data):
+        # parametrize 会将[['TC001', '搜索Selenium', 'Selenium', 'Selenium', None, 'Fail', None]]拆成一个实体，单列表
+        allure.dynamic.title(f'百度动态搜索关键字：{data[2]}')
+        # 方法上方需要装饰器，而方法内部是不需要@
+        try:
+            # 该方法的参数名字需要与装饰器参数化的第一个参数名一致，且在使用中也必须是driver
+            baidu = BaiduPage(driver)
+            with allure.step('步骤1：打开百度搜索页面'):
+                baidu.open_target_page("https://www.baidu.com")
+                result_data = []
+    
+            # print(f'yesysyeys{data}')
+            # for row in data:
+            # print(row)
+                (
+                    case_id,
+                    case_name,
+                    keyword,
+                    expected_result,
+                    actual_result,
+                    status,
+                    remark,
+                ) = data
+            with allure.step('步骤2：搜索关键字后，获取其对应的title'):
+                actual_result = baidu.search_content(keyword).get_title()
+            # 在获取title之前，记得显示判断title是否成功跳转，太快获取的title还是旧有窗口
+    
+            with allure.step('步骤3：判断获得结果值，是否与期望值匹配'):
+                if str(expected_result) in actual_result:
+                    status = "Pass"
+                    remark = f"{actual_result}在期望值:{expected_result} 里面"
+                else:
+                    status = "Fail"
+                    remark = f"{actual_result}不在期望值:{expected_result} 里面"
+                result_data.append(
+                    [
+                        case_id,
+                        case_name,
+                        keyword,
+                        expected_result,
+                        actual_result,
+                        status,
+                        remark,
+                    ]
+                )
+            # list接收多个对象而不是参数
+        except Exception as e:
+            with allure.step(f'报错步骤：运行搜索案例{data[0]}程序报错了'):
+                # 测试函数的error直接处理，不在上抛
+                status = "Error"
+                remark = f"程序出错啦，原因是：{e}"
+                result_data.append(
+                    [
+                        case_id,
+                        case_name,
+                        keyword,
+                        expected_result,
+                        actual_result,
+                        status,
+                        remark,
+                    ]
+                )
+                # 报错也需要处理
+            raise       # 会打印堆栈信息
+            # pytest.fail(f'用例执行失败：{e},pytrace=True')  # 不打印堆栈信息
+            # 这样做的目的就是为了，让pytest知道程序报错了，而不是错误了，也还是pass
+        finally:
+            with allure.step(f'步骤4：正在将案例{data[0]}的数据写入excel表格'):
+                # print(result_data)
+                excel = ExcelHandler(data_file)
+>               excel.cover_write_point_sheet(0, result_data)
+
+test_cases\TestBaiduPOM.py:170: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <tools.ExcelHandler.ExcelHandler object at 0x000001FBD0346300>
+sheet_name = 0, data = [['TC005', '搜索美女', '美女', '美女', '美女_百度搜索', 'Pass', ...]]
+
+    def cover_write_point_sheet(self,sheet_name,data:List[list]):
+        '''使用字典映射：首先需要有一个字典，然后判断关键字是不是在字典key中（直接判断），如果在，则可以直接使用字典改变其值。记住，字典的数据是重要的数据（最终保存数据）'''
+        try:
+            # 创建重要的数据的字典：O(n)
+            # 带有条件判断，在关键字部位None条件下，最外层的括号是类型转换
+            data_dict={row[0]:row for row in data if row[0]}
+    
+            green_fill=PatternFill(start_color='00FF00',end_color='00FF00',fill_type='solid')
+            red_fill=PatternFill(start_color='ff0000',end_color='ff0000',fill_type='solid')
+            yellow_fill=PatternFill(start_color='FFD700',end_color='FFD700',fill_type='solid')
+            # 创建填充颜色字典
+            map_color={
+                'Pass':green_fill,
+                'Error':red_fill,
+                'Fail':yellow_fill
+            }
+            self.create_wb_sheet(sheet_name)
+            row_num=self.sheet.max_row
+            # 从第二行开始
+            for i in range(2,row_num+1):
+                case_id=self.sheet.cell(row=i,column=1).value
+                if case_id in data_dict:
+                    row=data_dict[case_id]
+                    self.sheet.cell(row=i,column=5).value=row[4]
+                    self.sheet.cell(row=i,column=6).value=row[5]
+                    self.sheet.cell(row=i,column=7).value=row[6]
+                    status=str(row[5]).capitalize()
+                    if status in map_color:
+                        self.sheet.cell(row=i,column=6).fill=map_color[status]
+        except Exception as e:
+            raise type(e)(f'没能成功数据匹配写入，原因如下：{e}')
+        finally:
+>           self.wb.save(self.file_path)
+E           AttributeError: 'NoneType' object has no attribute 'save'
+
+tools\ExcelHandler.py:107: AttributeError

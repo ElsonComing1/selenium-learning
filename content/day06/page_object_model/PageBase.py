@@ -1,4 +1,4 @@
-import os,sys
+import os,sys,allure
 from pathlib import Path
 
 
@@ -88,7 +88,7 @@ class PageBase:
     def click_element(self,locater:Locater):
         sleep(1)
         self.find_clickable_element(locater).click()
-        return True
+        return self
 
     def input_text(self,locater:Locater,searched_text)->None:
         element=self.find_clickable_element(locater)
@@ -98,12 +98,12 @@ class PageBase:
         element.clear()
 
         element.send_keys(searched_text)
-        return True
+        return self
 
 
     def move_to_element(self,locator:Locater):
         self.action.move_to_element(self.find_clickable_element(locator)).perform()
-        return True
+        return self
 
 
     @error_screenshot(ERROR_SCREENSHOT_PATH)
@@ -128,4 +128,11 @@ class PageBase:
     
     def get_title(self):
         return self.driver.title
+
+    def attach_important_element_png(self,element:WebElement,picture_name:str='重要元素截图'):
+        allure.attach(
+            element.screenshot_as_png,
+            name=picture_name,
+            attachment_type=allure.attachment_type.PNG
+        )        
 

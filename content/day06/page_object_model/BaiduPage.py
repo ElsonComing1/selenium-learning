@@ -37,9 +37,11 @@ class BaiduPage(PageBase):
     
     def search_content(self,key_word:str):
         # 形象的方法就不用将locator再作为参数传入，本类里已有
-        self.move_to_element(self.text_frame_locator).input_text(self.text_frame_locator,key_word)
+        if self.move_to_element(self.text_frame_locator):
+            self.input_text(self.text_frame_locator,key_word)
         # self.input_text(self.text_frame_locator,key_word)
-        self.move_to_element(self.search_button_locator).click_element(self.search_button_locator)
+        if self.move_to_element(self.search_button_locator):
+            self.click_element(self.search_button_locator)
         # sleep(3)
         if self.check_title(key_word):
             return self
@@ -51,6 +53,7 @@ class BaiduPage(PageBase):
             if self.move_to_element(self.settings_locator):
                 self.click_element(self.settings_locator)
                 sleep(3)
+                self.attach_important_element_png_by_locator(self.settings_locator,'设置元素截图')
             else:
                 raise
             return self
@@ -73,6 +76,11 @@ class BaiduPage(PageBase):
         self.click_element(self.login_button_locator)
         sleep(1)
         return self
+    
+    def attach_important_element_png_by_locator(self,locater,picture_name):
+        element=self.driver.find_element(*locater)
+        if element:
+            self.attach_important_element_png(element,picture_name)
     
         
 

@@ -4,3 +4,5 @@ pytest==7.4.3
 openpyxl
 pytest-html
 allure-pytest
+pytest-rerunfailures
+pytest-xdist
