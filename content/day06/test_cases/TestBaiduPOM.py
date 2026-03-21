@@ -1,4 +1,5 @@
 from pathlib import Path
+import pandas as pd
 PROJECT_PATH=str(Path(__file__).parent.parent)
 import sys
 sys.path.insert(0,PROJECT_PATH)
@@ -97,6 +98,7 @@ class TestBaiduPom:
     @pytest.mark.parametrize("data", get_data(data_file, 0))
     @allure.description('通过百度首页，搜索不通关键字，然后判断搜索后的页面主题是否包含对应的关键字')
     @pytest.mark.flaky(reruns=2,reruns_delay=3,only_rerun=["TimeoutException"])
+    # 重试机制
     def test_data_driven_search(self, driver, data):
         # parametrize 会将[['TC001', '搜索Selenium', 'Selenium', 'Selenium', None, 'Fail', None]]拆成一个实体，单列表
         allure.dynamic.title(f'百度动态搜索关键字：{data[2]}')
@@ -164,10 +166,46 @@ class TestBaiduPom:
             # pytest.fail(f'用例执行失败：{e},pytrace=True')  # 不打印堆栈信息
             # 这样做的目的就是为了，让pytest知道程序报错了，而不是错误了，也还是pass
         finally:
-            with allure.step(f'步骤4：正在将案例{data[0]}的数据写入excel表格'):
-                # print(result_data)
-                excel = ExcelHandler(data_file)
-                excel.cover_write_point_sheet(0, result_data)
+            # 仅使用于单进程
+            # with allure.step(f'步骤4：正在将案例{data[0]}的数据写入excel表格'):
+            #     # print(result_data)
+            #     excel = ExcelHandler(data_file)
+            #     excel.cover_write_point_sheet(0, result_data)
+
+
+            # 多进程并发 pytest-xdist;
+            result_df=pd.DataFrame(result_data,columns=[
+                'case_id', 'case_name', 'keyword', 
+                'expected_result', 'actual_result', 
+                'status', 'remark'
+            ])
+            # 表格形式，一个内部列表就是一个实例，也是数据类型从[[]]转换成 pd.dataframe
+            worker_id=os.getenv('PYTEST_XDIST_WORKER','master')
+            # 多进程时，返回对应的进程id,单进程只会返回master; 此处就是区分多进程与当单进程的关键点
+            temp_file=f'temp_result_{worker_id}.xlsx'
+
+            # 需要针对进程，来对文件进行不同的输入模式: 单进程 追加，多进程，单个文件
+            if os.path.exists(temp_file):
+                # 文件存在，则是追加
+                existing_data=pd.read_excel(temp_file)
+                curr_worker_data=pd.concat([existing_data,result_df],ignore_index=True)
+                # 始终保持不带行索引号
+                curr_worker_data.to_excel(temp_file,index=False)
+                # pd数据类型，直接方法再次写入该文件，始终保持不带含索引号
+
+
+            else:
+                # 不存在。则是直接写入，写入会直接创建文件
+                result_df.to_excel(temp_file,index=False)
+
+            # 此处finally 均是写入临时文件，需要conftest.py文件中写对应的后续处理pytest_sessionfinish(session,existstatus)
+
+
+
+
+
+
+
 
     @allure.severity(allure.severity_level.NORMAL)
     # 设置其他级别，进行覆盖类的严重级别

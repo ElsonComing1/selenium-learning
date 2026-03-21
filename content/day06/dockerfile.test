@@ -1,0 +1,58 @@
+FROM python:3.12-alpine
+# FROM可以小写，但是强烈建议大写。FROM是dcokerfile指令;强烈建议大写原因: 便于辨别指令和参数
+# FROM生命基础镜像，站在谁的肩膀上运行
+
+RUN apk add --no-cache bash gcc musl-dev linux-headers
+# RUN 执行命令一次, 每执行一次, 镜像增加一层。是叠加，而不是包裹。
+# apk add 类似 apt-get install 参数 --no-cache 不留缓存，减小镜像体积, 安装bash shell、C编译器、AIpine的C库开发文件、linux内核头文件
+# 安装以上库的原因是: selenium pandas 等python库，需要有底层C的扩展，需要编译环境；编译 执行
+
+WORKDIR /app
+# 类似linux的cd 切换目录，但是具有创建且切入的作用
+# 只创建，不切入的指令有么？
+
+COPY requirements.txt .
+# 赋值宿主机上的文件至当前工作目录(app)下; app/requirements.txt
+
+RUN pip install --no-cache-dir -r requirements.txt
+# --no-cache-dir 不保留pip缓存，减小镜像体积
+# -r 从文件读取列表
+# 这是在容器内执行，安装好的库会保存在镜像中，不是在windows上
+
+RUN apk add --no-cache openjdk11-jre curl unzip \
+&& curl -o allur.tgz -Ls https://github.com/allure-framework/allure2/releases/download/2.24.0/allure-2.24.0.tgz \
+&& tar -zxvf allure.tgz -C /opt/ \
+&& ln -s /opt/allure-2.24.0/bin/allure /usr/bin/allure \
+&& rm allure.tgz
+# && 前一个指令成，后一个指令才会执行
+# curl -o 保存位置 -Ls(动态跟随，静默) url 
+# ln -s(soft) 路径 被link路径 
+
+COPY . .
+# 赋值宿主机当前目录 至 容器内
+
+CMD ["pytest","test_cases/TestBaiduPOM.py","-v","--alluredir=./allure-results"]
+# docker运行指令
+
+# Windows 宿主机（你的电脑）
+#     ↓
+# docker run my-image    ← 你输入这条命令
+#     ↓
+# Docker 引擎启动容器
+#     ↓
+# 容器内部（Linux 环境，Alpine 系统）
+#     ↓
+# 执行 CMD：pytest test_cases/TestBaiduPOM.py...
+#     ↓
+# 生成 allure-results 在容器内（/app/allure-results）
+
+
+
+
+
+# 分层是为了缓存，前面没变的直接使用，不需要再构建，多个项目也可以公用没变的层；
+# 正常情况下是一个指令一层，FROM是引用文件多层。
+# 创建层的指令：文件操作 RUN COPY ADD 修改文件系统，创建主要层，体积大；元数据 ENV WORKDIR USER VOLUME EXPOSE LABEL CMD ENTRYPOINT 修改镜像配置，创建元数据层，体积小
+# 不创建层：基础引用 FROM 只是引用基础镜像的层，不添加。构建参数 ARG 仅在构建参数存在，不进入最终镜像
+
+# 配合 .dockerignore 文件可以排除不需要的文件（如 report/、__pycache__/、allure-results/），减小镜像体积。

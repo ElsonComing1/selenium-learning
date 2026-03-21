@@ -1,0 +1,9 @@
+# 排除这些文件，不复制到镜像中（减小体积）
+report/
+allure-results/
+.pytest_cache/
+__pycache__/
+*.pyc
+.git/
+.idea/
+*.log
