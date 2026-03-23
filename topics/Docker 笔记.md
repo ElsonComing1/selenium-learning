@@ -46,7 +46,9 @@ docker是进程级别的隔离，以及环境不一致的问题，是生产 Imag
     1. 看日志: docker logs <container_name>
         eg: docker logs -f --tail 100 selenium-hub 实时查看selenium-hub容器的最后100行日志
     2. 进容器内部: docker exec -it <container_name> bash
-        eg: docker exec -it selenium-hub bash 进入容器内部查看chromedriver是否再运行
+        eg: docker exec -it selenium-hub bash 进入容器内部查看chromedriver是否再运行;
+        -i interactive(交互式); -t tty(伪终端); bash使得不退出, 保持登录状态, 除非exit;
+        -u root超级管理员进入
     3. 查看详情: docker inspect <container_name>
         eg: docker inspect selenium-hub | grep IPAddress 查看容器IP, 将用于配置测试脚本
     4. 复制文件 docker cp container:路径 宿主机路径
@@ -91,7 +93,7 @@ wsl和windows分别安装docker目的分别是c/s服务，wsl作为client，而w
 
 让docker desktop与wsl连接
 
-![](../picturs/5.png)
+![wsl](../picturs/5.png)
 
 - ##### 启动 Jenkins 容器
 
@@ -176,7 +178,7 @@ jenkins/jenkins:lts	# 基于的jenkins镜像基础上实现容器，是将远程
 # -v 容器删除，配置还在。便于再次运行
 ```
 
-换源：
+##### 换源：
 
 ![](../picturs/6.png)
 
@@ -188,6 +190,8 @@ WSL2 为 Docker Desktop 提供了 Linux 内核运行环境，Docker 引擎是doc
 
 docker desktop常用他的其中的GUI 看状态，适合可视化；WSL是用命令行操控Docker，适合自动化脚本；两者操作的是同一套容器，数据存在WSL2的虚拟磁盘中。
 
+##### 获取初始管理员密码
+
 ```bash
 docker logs -f jenkins
 # 等待看到 "Jenkins is fully up and running" 后，Ctrl+C 停止日志跟踪
@@ -197,5 +201,30 @@ docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 # 复制这串字符（如：a1b2c3d4...）
 ```
 
+##### 启动jenkins网页管理
+
 ![](../picturs/7.png)
+
+##### 新建pipeline(流水线)
+
+![](../picturs/8.png)
+
+- ###### 点击左侧"流水线"
+
+在左侧菜单点击 **"流水线"**（或 Pipeline），进入 Pipeline 配置区域。
+
+- ###### 按文档要求填写（关键配置）
+
+表格
+
+| 配置项                | 选项/填写内容                                          | 说明                                                      |
+| :-------------------- | :----------------------------------------------------- | :-------------------------------------------------------- |
+| **Definition**        | `Pipeline script from SCM`                             | 从 Git 仓库读取 Jenkinsfile                               |
+| **SCM**               | `Git`                                                  | 版本控制工具                                              |
+| **Repository URL**    | `https://gitee.com/ElsonComing1/selenium-learning.git` | ⚠️ **注意**：由于 GitHub 连不上，请改为 Gitee 地址（码云） |
+| **Credentials**       | 选择 `无`（如果是公开仓库）或添加用户名密码            | Gitee 公开库可以不填                                      |
+| **Branches to build** | `*/main`                                               | 构建 main 分支（或你的默认分支）                          |
+| **Script Path**       | `Jenkinsfile`                                          | 仓库根目录下的 Jenkinsfile 文件名                         |
+
+- ###### 立即保存前的检查清单
 
