@@ -62,35 +62,37 @@
 # 基础镜像（Debian系，apt管理）
 FROM python:3.12-slim
 
-# 1. 换国内apt源 + 安装基础工具（合并一层）
-RUN sed -i 's/deb.debian.org//mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
+# 1. 换国内apt源 + 安装基础工具（含 Java 21）
+# 注意：Debian 12/13 使用 deb822 格式，原文件路径不同，需重建 sources.list
+RUN CODENAME=$(awk -F= '/VERSION_CODENAME/{print $2}' /etc/os-release) && \
+    rm -f /etc/apt/sources.list.d/debian.sources && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ ${CODENAME} main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ ${CODENAME}-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian-security ${CODENAME}-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
     apt-get update && \
-    apt-get install -y wget unzip gnupg2 chromium chromium-driver && \
+    apt-get install -y wget unzip gnupg2 chromium chromium-driver openjdk-21-jre-headless && \
     rm -rf /var/lib/apt/lists/*
 
-# 2. 安装Allure（下载+解压+删除合并，用ghproxy加速）
-RUN wget -q "https://ghproxy.com/https://github.com/allure-framework/allure2/releases/download/2.24.0/allure-2.24.0.tgz " && \
-    tar -zxf allure-2.24.0.tgz -C /opt/ && \
-    ln -sf /opt/allure-2.24.0/bin/allure /usr/bin/allure && \
-    rm -f allure-2.24.0.tgz && \
+# 2. 安装Allure（使用本地 COPY，避免网络问题）
+# 提前在本地执行：curl -L -o allure-commandline-2.24.0.tgz "https://maven.aliyun.com/repository/public/io/qameta/allure/allure-commandline/2.24.0/allure-commandline-2.24.0.tgz"
+COPY allure-commandline-2.24.0.tgz /tmp/
+RUN tar -zxf /tmp/allure-commandline-2.24.0.tgz -C /opt/ && \
+    ln -sf $(find /opt -maxdepth 1 -type d -name "allure-*")/bin/allure /usr/bin/allure && \
+    rm -f /tmp/allure-commandline-2.24.0.tgz && \
     allure --version
 
-# 3. 创建Chrome 软连接(兼容代码中google-chrome)
-RUN ln -sf /usr/bin/chromium /usr/bin/google-chrome && \
-    ln -sf /usr/bin/chromedriver /usr/bin/chromedriver
+# 3. 创建Chrome软连接（只链接 google-chrome，chromedriver 已在 /usr/bin/）
+RUN ln -sf /usr/bin/chromium /usr/bin/google-chrome
 
-# 4. 复制并安装python依赖（利用缓存层优化）
+# 4. 复制并安装python依赖
 COPY requirements.txt /tmp/requirements.txt
-    # 从本地机里面复制到镜像中
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple  && \
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     rm -f /tmp/requirements.txt
-    # 用完删除节约空间
 
-# 5.设置当前工作目录
+# 5. 设置工作目录
 WORKDIR /app
 
-# 6.默认命令（bash，可覆盖）
+# 6. 默认命令
 CMD ["bash"]
 
 

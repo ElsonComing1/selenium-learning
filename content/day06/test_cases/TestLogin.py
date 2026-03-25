@@ -7,7 +7,7 @@ sys.path.insert(0, PROJECT_PATH)
 
 from page_object_model.BaiduPage import *
 from selenium import webdriver
-from selenium.webdriver.edge.options import Options
+from selenium.webdriver.chrome.options import Options
 from tools.ExcelHandler import *
 from datetime import datetime
 import pytest,allure
@@ -29,8 +29,8 @@ class TestLogin:
     def driver(self):
         # 需要使用套件里变量的测试，需要其有一个参数名是套件的方法名
         options = Options()
-        options.add_argument("--start-maximized")
-        dr = webdriver.Edge(options=options)
+        options.add_argument("--headless=new")  # 新版 Chromium 推荐写法
+        dr = webdriver.chrome(options=options)
         yield dr
         # 此处的yield是迭代器，会将控制权交予使用该套件名的测试方法，此处dr是内部变量
         dr.quit()

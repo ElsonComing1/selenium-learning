@@ -1,0 +1,9 @@
+selenium==4.15.0
+webdriver-manager==4.0.1
+pytest==7.4.3
+openpyxl==3.1.2
+pytest-html==4.1.1
+allure-pytest==2.13.2
+pytest-rerunfailures==13.0
+pytest-xdist==3.5.0
+pandas==2.1.3
