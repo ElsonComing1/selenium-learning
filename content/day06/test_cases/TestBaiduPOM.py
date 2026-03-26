@@ -65,7 +65,13 @@ class TestBaiduPom:
         # 需要使用套件里变量的测试，需要其有一个参数名是套件的方法名
         options = Options()
         # 无头模式（不弹出浏览器窗口）
+        # 必须添加以下参数（容器环境必需）
+        options.add_argument("--headless")           # 无头模式（关键！）
+        options.add_argument("--no-sandbox")         # 禁用沙盒（容器必需）
+        options.add_argument("--disable-dev-shm-usage")  # 禁用 /dev/shm（避免内存问题）
+        options.add_argument("--disable-gpu")        # 禁用 GPU（容器内无用）
         options.add_argument("--start-maximized")  # 新版 Chromium 推荐写法
+        # service = Service('/usr/bin/chromedriver')  # 确认路径正确
         dr = webdriver.Chrome(options=options)
         yield dr
         # 此处的yield是迭代器，会将控制权交予使用该套件名的测试方法，此处dr是内部变量

@@ -29,6 +29,11 @@ class TestLogin:
     def driver(self):
         # 需要使用套件里变量的测试，需要其有一个参数名是套件的方法名
         options = Options()
+        # 必须添加以下参数（容器环境必需）
+        options.add_argument("--headless")           # 无头模式（关键！）
+        options.add_argument("--no-sandbox")         # 禁用沙盒（容器必需）
+        options.add_argument("--disable-dev-shm-usage")  # 禁用 /dev/shm（避免内存问题）
+        options.add_argument("--disable-gpu")        # 禁用 GPU（容器内无用）
         options.add_argument("--start-maximized")  # 新版 Chromium 推荐写法
         dr = webdriver.chrome(options=options)
         yield dr
