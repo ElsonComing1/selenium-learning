@@ -29,7 +29,7 @@ class TestLogin:
     def driver(self):
         # 需要使用套件里变量的测试，需要其有一个参数名是套件的方法名
         options = Options()
-        options.add_argument("--headless=new")  # 新版 Chromium 推荐写法
+        options.add_argument("--start-maximized")  # 新版 Chromium 推荐写法
         dr = webdriver.chrome(options=options)
         yield dr
         # 此处的yield是迭代器，会将控制权交予使用该套件名的测试方法，此处dr是内部变量

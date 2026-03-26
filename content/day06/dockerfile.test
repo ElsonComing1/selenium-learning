@@ -70,7 +70,7 @@ RUN CODENAME=$(awk -F= '/VERSION_CODENAME/{print $2}' /etc/os-release) && \
     echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ ${CODENAME}-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
     echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian-security ${CODENAME}-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
     apt-get update && \
-    apt-get install -y wget unzip gnupg2 chromium chromium-driver openjdk-21-jre-headless && \
+    apt-get install -y wget unzip git gnupg2 chromium chromium-driver openjdk-21-jre-headless && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. 安装Allure（使用本地 COPY，避免网络问题）

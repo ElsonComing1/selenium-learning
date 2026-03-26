@@ -1,4 +1,4 @@
-### Docker 笔记
+### Docker&dockerfile
 
 ##### 1. 自动化docker常用指令：
 
@@ -76,8 +76,9 @@ docker是进程级别的隔离，以及环境不一致的问题，是生产 Imag
     5. docker volume prune 只删除未使用的卷 
 
 8. 构建(dockerfile)
-    1. docker build -t 镜像名:标签 . ; 构建指定当前目录的dockerfile; . 是要构建镜像的位置。
-    2. docker build --no-cache -t mytest:v1 . 不用缓存, 强制重新构建
+    1. docker build -f -t 镜像名:标签 . ; 构建指定当前目录的dockerfile; . 是要构建镜像的位置。
+       只是会将文件中提到的内容打成镜像，文件从当前路径开始获取。会存在实际物理路径
+    2. docker build --no-cache -f dockerfile.test -t mytest:v1 . 不用缓存, 强制重新构建;-f 文件 -t 打仓库名:标签(默认latest)
 '''
 
 '''
@@ -179,6 +180,18 @@ eg:
     回归测试	Regression	        修改代码后重跑历史用例，确保未引入新 Bug
 
 
+'''
+
+'''
+    WSL + Docker Desktop + Jenkins 的权限机制：
+        Docker Desktop 在 Windows 侧运行 Docker 引擎，并通过 WSL 集成在 Ubuntu 中暴露 /var/run/docker.sock（Unix Socket 接口）。
+        这个 Socket 文件是 Docker 的"遥控器"：拥有读写权限 = 可以执行任意 Docker 命令（创建容器、删除镜像等）。
+        权限限制：Socket 默认属于 root:docker（GID 可能是 998/1001 等），普通用户无法访问。
+        --group-add $(stat -c '%g' ...) 的作用：
+        动态查询宿主机上 docker 组的 GID
+        容器启动时，将内部的 jenkins 用户临时加入该 GID 的组
+        使 jenkins 用户获得对 socket 的读写权限
+        结果：Jenkins 容器内可以执行 docker build、docker run，实际由 Windows 的 Docker Desktop 完成底层操作，实现"容器内控制容器"（Docker in Docker）。
 '''
 ```
 
@@ -326,4 +339,297 @@ docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 | **Script Path**       | `Jenkinsfile`                                          | 仓库根目录下的 Jenkinsfile 文件名                         |
 
 - ###### 立即保存前的检查清单
+
+##### 镜像文件
+
+dockerfile
+
+```txt
+# FROM python:3.12-alpine
+# # FROM可以小写，但是强烈建议大写。FROM是dcokerfile指令;强烈建议大写原因: 便于辨别指令和参数
+# # FROM生命基础镜像，站在谁的肩膀上运行
+
+# RUN apk add --no-cache bash gcc musl-dev linux-headers
+# # RUN 执行命令一次, 每执行一次, 镜像增加一层。是叠加，而不是包裹。
+# # apk add 类似 apt-get install 参数 --no-cache 不留缓存，减小镜像体积, 安装bash shell、C编译器、AIpine的C库开发文件、linux内核头文件
+# # 安装以上库的原因是: selenium pandas 等python库，需要有底层C的扩展，需要编译环境；编译 执行
+
+# WORKDIR /app
+# # 类似linux的cd 切换目录，但是具有创建且切入的作用
+# # 只创建，不切入的指令有么？
+
+# COPY requirements.txt .
+# # 赋值宿主机上的文件至当前工作目录(app)下; app/requirements.txt
+
+# RUN pip install --no-cache-dir -r requirements.txt
+# # --no-cache-dir 不保留pip缓存，减小镜像体积
+# # -r 从文件读取列表
+# # 这是在容器内执行，安装好的库会保存在镜像中，不是在windows上
+
+# RUN apk add --no-cache openjdk11-jre curl unzip \
+# && curl -o allur.tgz -Ls https://github.com/allure-framework/allure2/releases/download/2.24.0/allure-2.24.0.tgz \
+# && tar -zxvf allure.tgz -C /opt/ \
+# && ln -s /opt/allure-2.24.0/bin/allure /usr/bin/allure \
+# && rm allure.tgz
+# # && 前一个指令成，后一个指令才会执行
+# # curl -o 保存位置 -Ls(动态跟随，静默) url 
+# # ln -s(soft) 路径 被link路径 
+
+# COPY . .
+# # 赋值宿主机当前目录 至 容器内
+
+# CMD ["pytest","test_cases/TestBaiduPOM.py","-v","--alluredir=./allure-results"]
+# # docker运行指令
+
+# # Windows 宿主机（你的电脑）
+# #     ↓
+# # docker run my-image    ← 你输入这条命令
+# #     ↓
+# # Docker 引擎启动容器
+# #     ↓
+# # 容器内部（Linux 环境，Alpine 系统）
+# #     ↓
+# # 执行 CMD：pytest test_cases/TestBaiduPOM.py...
+# #     ↓
+# # 生成 allure-results 在容器内（/app/allure-results）
+
+
+
+
+
+# # 分层是为了缓存，前面没变的直接使用，不需要再构建，多个项目也可以公用没变的层；
+# # 正常情况下是一个指令一层，FROM是引用文件多层。
+# # 创建层的指令：文件操作 RUN COPY ADD 修改文件系统，创建主要层，体积大；元数据 ENV WORKDIR USER VOLUME EXPOSE LABEL CMD ENTRYPOINT 修改镜像配置，创建元数据层，体积小
+# # 不创建层：基础引用 FROM 只是引用基础镜像的层，不添加。构建参数 ARG 仅在构建参数存在，不进入最终镜像
+
+# # 配合 .dockerignore 文件可以排除不需要的文件（如 report/、__pycache__/、allure-results/），减小镜像体积。
+
+
+
+# 基础镜像（Debian系，apt管理）
+FROM python:3.12-slim
+
+# 1. 换国内apt源 + 安装基础工具（含 Java 21）
+# 注意：Debian 12/13 使用 deb822 格式，原文件路径不同，需重建 sources.list
+RUN CODENAME=$(awk -F= '/VERSION_CODENAME/{print $2}' /etc/os-release) && \
+    rm -f /etc/apt/sources.list.d/debian.sources && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ ${CODENAME} main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ ${CODENAME}-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian-security ${CODENAME}-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y wget unzip gnupg2 chromium chromium-driver openjdk-21-jre-headless && \
+    rm -rf /var/lib/apt/lists/*
+
+# 2. 安装Allure（使用本地 COPY，避免网络问题）
+# 提前在本地执行：curl -L -o allure-commandline-2.24.0.tgz "https://maven.aliyun.com/repository/public/io/qameta/allure/allure-commandline/2.24.0/allure-commandline-2.24.0.tgz"
+COPY allure-commandline-2.24.0.tgz /tmp/
+RUN tar -zxf /tmp/allure-commandline-2.24.0.tgz -C /opt/ && \
+    ln -sf $(find /opt -maxdepth 1 -type d -name "allure-*")/bin/allure /usr/bin/allure && \
+    rm -f /tmp/allure-commandline-2.24.0.tgz && \
+    allure --version
+
+# 3. 创建Chrome软连接（只链接 google-chrome，chromedriver 已在 /usr/bin/）
+RUN ln -sf /usr/bin/chromium /usr/bin/google-chrome
+
+# 4. 复制并安装python依赖
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    rm -f /tmp/requirements.txt
+
+# 5. 设置工作目录
+WORKDIR /app
+
+# 6. 默认命令
+CMD ["bash"]
+
+
+
+# # 构建步骤：
+# # 1. 进入dockerfile所在目录
+# cd /mnt/d/selenium-learning
+
+# # 2. 构建镜像
+# docker build -t auto-test:v1
+
+# # 3. 验证构建成功
+# docker images | grep auto-test
+
+# # 4. 运行容器测试
+# docker run -it --rm -v $(PWD):/app auto-test:v1 bash
+
+# 进去后验证：
+# allure --version
+# google-chrome --version
+# pytest --version
+```
+
+##### 构建镜像
+
+镜像一次构建，多个容器快速使用
+
+构建指令
+
+```bash
+ docker build -f dockerfile.test -t my-test:latest .
+```
+
+```bash
+16531@Elson MINGW64 ~/Desktop/selenium-learning/content/day06 (main)
+$ docker build -f dockerfile.test -t my-test:latest .
+[+] Building 74.0s (13/13) FINISHED                                                                                                                                                          docker:desktop-linux
+ => [internal] load build definition from dockerfile.test                                                                                                                                                    0.0s
+ => => transferring dockerfile: 5.21kB                                                                                                                                                                       0.0s
+ => [internal] load metadata for docker.io/library/python:3.12-slim                                                                                                                                          0.2s
+ => [internal] load .dockerignore                                                                                                                                                                            0.0s
+ => => transferring context: 189B                                                                                                                                                                            0.0s
+ => [1/8] FROM docker.io/library/python:3.12-slim@sha256:3d5ed973e45820f5ba5e46bd065bd88b3a504ff0724d85980dcd05eab361fcf4                                                                                    0.0s
+ => => resolve docker.io/library/python:3.12-slim@sha256:3d5ed973e45820f5ba5e46bd065bd88b3a504ff0724d85980dcd05eab361fcf4                                                                                    0.0s
+ => [internal] load build context                                                                                                                                                                            0.0s
+ => => transferring context: 89B                                                                                                                                                                             0.0s
+ => CACHED [2/8] RUN CODENAME=$(awk -F= '/VERSION_CODENAME/{print $2}' /etc/os-release) &&     rm -f /etc/apt/sources.list.d/debian.sources &&     echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ ${  0.0s
+ => CACHED [3/8] COPY allure-commandline-2.24.0.tgz /tmp/                                                                                                                                                    0.0s
+ => CACHED [4/8] RUN tar -zxf /tmp/allure-commandline-2.24.0.tgz -C /opt/ &&     ln -sf $(find /opt -maxdepth 1 -type d -name "allure-*")/bin/allure /usr/bin/allure &&     rm -f /tmp/allure-commandline-2  0.0s
+ => [5/8] RUN ln -sf /usr/bin/chromium /usr/bin/google-chrome                                                                                                                                                0.3s
+ => [6/8] COPY requirements.txt /tmp/requirements.txt                                                                                                                                                        0.0s
+ => [7/8] RUN pip3 install --no-cache-dir -r /tmp/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple &&     rm -f /tmp/requirements.txt                                                           19.9s
+ => [8/8] WORKDIR /app                                                                                                                                                                                       0.1s
+ => exporting to image                                                                                                                                                                                      52.0s
+ => => exporting layers                                                                                                                                                                                     45.0s
+ => => exporting manifest sha256:1b4e899a6a6994dda264e2816a2f0006a0a909aaa2696b00a7d61a713617ac65                                                                                                            0.0s
+ => => exporting config sha256:75374b8e6f3dec84da0e1b506c1e41721c231b0ff54b819e75218b391ee097cd                                                                                                              0.0s
+ => => exporting attestation manifest sha256:b09f8d42e6c9388c9a8bb6b5432495718ee91b80f9da01368cd0a00f0110ec8a                                                                                                0.0s
+ => => exporting manifest list sha256:3850a7d3c32c839fa813efd2866a10fb11c08da2deb1ee48497e40d3421de958                                                                                                       0.0s
+ => => naming to docker.io/library/my-test:latest                                                                                                                                                            0.0s
+ => => unpacking to docker.io/library/my-test:latest                                                                                                                                                         6.9s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/pkes8yfu7yc2mxg5yc28u9j9k
+```
+
+##### 动态启动容器
+
+- 安装插件
+
+**Manage Jenkins** → **Plugins** → **Available plugins**：
+
+搜索 `Docker Pipeline` → 安装
+
+搜索 `Docker` → 安装（如果还没装）
+
+目的：为了容器中的jenkins能够控制宿主机的docker，动态创建agent，通过之前的挂在-v /var/run/docker.sock:/var/run/docker.sock
+
+- 配置cloud
+
+**Manage Jenkins** → **Clouds** → **New Cloud**：
+
+**名称**: `docker-local`
+
+**Docker Host URI**: `unix:///var/run/docker.sock`
+
+点击 **Test Connection**，应该显示 Docker 版本号（证明 Jenkins 能操作 Docker）
+
+![](../picturs/9.png)
+
+- 配置Agent模板（让Jenkins知道如何启动my-test）
+
+点击 Docker Agent templates → Add Docker Template：
+
+| 配置项                      | 值                            | 说明                                  |
+| --------------------------- | ----------------------------- | ------------------------------------- |
+| **Labels**                  | `my-test-agent`               | **重要**：Pipeline 里要用这个标签     |
+| **Name**                    | `pytest-executor`             | 随便起个名                            |
+| **Docker Image**            | `my-test:latest`              | 刚才构建的镜像名                      |
+| **Remote File System Root** | `/app`                        | 必须和 Dockerfile 里的 `WORKDIR` 一致 |
+| **Usage**                   | Only build jobs with label... | 只跑匹配标签的任务                    |
+| **Launch method**           | Attach Docker Container       | 直接附加到容器                        |
+
+卷挂载（Volumes）必须配置（否则代码进不去）：
+
+点击 Container settings → Volumes → Add：
+
+```tex
+/var/jenkins_home:/var/jenkins_home	#mount
+```
+
+网络设置：
+
+Network: bridge（默认）
+
+保存
+
+- 编写Pipeline(动态构建容器)
+
+```groovy
+pipeline {
+    agent {
+        label 'my-test-agent'
+    }
+    
+    environment {
+        DISPLAY = ':99'
+    }
+    
+    stages {
+        stage('检出代码') {
+            steps {
+                // 克隆代码到 /app（WORKDIR）
+                sh '''
+                    git clone https://github.com/ElsonComing1/selenium-learning.git .
+                    ls -la
+                '''
+            }
+        }
+        
+        stage('启动虚拟显示') {
+            steps {
+                sh '''
+                    Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 &
+                    sleep 1
+                '''
+            }
+        }
+        
+        stage('执行测试') {
+            steps {
+                // 注意路径：content/day06/
+                sh """
+                    cd content/day06
+                    python -m pytest test_cases/TestBaiduPOM.py \
+                        -v \
+                        --alluredir=./allure-results \
+                        --html=./report.html \
+                        --self-contained-html
+                """
+            }
+        }
+        
+        stage('生成报告') {
+            steps {
+                allure([
+                    includeProperties: false,
+                    jdk: '',
+                    results: [[path: 'content/day06/allure-results']]
+                ])
+                
+                publishHTML(target: [
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'content/day06',
+                    reportFiles: 'report.html',
+                    reportName: 'Pytest Report'
+                ])
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh 'pkill Xvfb || true'
+            cleanWs()
+        }
+    }
+}
+```
+
+##### 构建
 
