@@ -595,9 +595,7 @@ pipeline {
                     cd content/day06
                     python -m pytest test_cases/TestBaiduPOM.py \
                         -v \
-                        --alluredir=./allure-results \
-                        --html=./report.html \
-                        --self-contained-html
+                        --alluredir=./allure-results 
                 """
             }
         }
@@ -608,16 +606,7 @@ pipeline {
                     includeProperties: false,
                     jdk: '',
                     results: [[path: 'content/day06/allure-results']]
-                ])
-                
-                publishHTML(target: [
-                    allowMissing: false,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: 'content/day06',
-                    reportFiles: 'report.html',
-                    reportName: 'Pytest Report'
-                ])
+                ])          
             }
         }
     }
@@ -632,4 +621,10 @@ pipeline {
 ```
 
 ##### 构建
+
+github中的项目名会被jekins中的pipeline项目名顶替
+
+需要配置DNS
+
+需要装Allure Jenkins Plugins
 
