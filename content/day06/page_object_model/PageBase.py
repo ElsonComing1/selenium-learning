@@ -29,7 +29,7 @@ def error_screenshot(save_path:str)->None:
                 # 越底层越是raise上抛问题，不处理，交给pyetst(外层)
         def _take_screenshot(slef,external_path,func_name,element):
             timestamp=datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-            file_path=os.path.join(external_path,f'{dir_name}',f'{func_name.__name__}_error_{element}_{timestamp}.png')
+            file_path=os.path.join(external_path,f'{func_name.__name__}_error_{element}_{timestamp}.png')
             os.makedirs(os.path.join(save_path,f'{dir_name}'),exist_ok=True)
             self.driver.save_screenshot(file_path)
         return wrapper

@@ -554,67 +554,134 @@ View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux
 
 Network: bridge（默认）
 
+定时配置：
+
+![](../picturs/13.png)
+
 保存
 
-- 编写Pipeline(动态构建容器)
+- 项目配置编写Pipeline(动态构建容器)
+
+master管理 agent执行的分离架构
 
 ```groovy
 pipeline {
-    agent {
-        label 'my-test-agent'
-    }
-    
-    environment {
-        DISPLAY = ':99'
-    }
+    // 全局不指定 agent，每个 stage 自己选择；每一个具体的stage需要使用者自己指明节点
+    agent none
     
     stages {
-        stage('检出代码') {
+        stage('Master 检出代码') {
+            // Master 能联网，负责下载代码
+            agent { label 'master' }	// 强制在 Master 运行
+            // 指定master节点
             steps {
-                // 克隆代码到 /app（WORKDIR）
-                sh '''
-                    git clone https://github.com/ElsonComing1/selenium-learning.git .
-                    ls -la
-                '''
+                 // 重试 3 次，每次间隔 5 秒
+                timeout(time: 2, unit: 'MINUTES') {	// 防卡死保险
+                    // pipeline中的关键字是DSL（领域特定语言）不可乱写
+                    retry(3) {	// 网络抖动容错
+                        // 失败重试次数3
+                        git(
+                            url: 'git@gitee.com:ElsonComing1/selenium-learning.git',
+                            // 需要获取代码的url(资源定位符)
+                            branch: 'main',
+                            // 指明分支获取，更精准
+                            credentialsId: 'gitee-ssh-key'  // 对应上面设置的私钥;安全引用凭证	
+                            // 公钥就是锁
+                            // 私钥是钥匙
+                            // 锁与钥匙均有我来分配，为了达到相互信任沟通。（安全）
+                        )
+                    }
+                }
+                stash includes: '**/*', name: 'source-code' // 跨节点文件传输
+                // stash打包；**包括当前目录的全部层级（递归）；*该层级下的全部文件和目录
+                // git clone会把仓库名selenium-learning下的内容clone进当前master的工作目录
+                // 打包也是仓库下的内容
+                // /var/lib/jenkins/workspace/Selenium-Automation/
             }
         }
         
-        stage('启动虚拟显示') {
+        stage('Agent 执行测试') {
+            // Agent 无需联网，专心执行
+            agent { label 'my-test-agent' }		// 启动动态容器，用完即删
+            // 需要配置docker cloud agent模版
+            environment {
+                DISPLAY = ':99'		// linux没有显示器，需要启动虚拟显示器
+            }
             steps {
+                // 从 Master 接收代码（Jenkins 内部传输，不依赖容器网络）
+                unstash 'source-code'
+                // /var/lib/agent/workspace/Selenium-Automation/
+ 				
+                // 启动 Chrome + Xvfb（耗 CPU/内存）
                 sh '''
-                    Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 &
+                    # 清理旧的 Xvfb
+                    pkill Xvfb 2>/dev/null || true
                     sleep 1
+                    
+                    # 启动 Xvfb（带参数确保稳定性）；启动虚拟显示器 :99
+                    Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset > /dev/null 2>&1 &
+                    sleep 2
+                    
+                    # 验证 Xvfb 是否启动成功
+                    if ! ps aux | grep -v grep | grep Xvfb; then
+                        echo "Xvfb 启动失败！"
+                        exit 1
+                    fi
+                    
+                    # 设置权限（确保所有用户可访问显示）
+                    export DISPLAY=:99
+                    xhost + 2>/dev/null || true		// # 允许任何用户连接（容器内单用户，无安全风险）
+                '''
+                
+                 // 关键：彻底删除整个目录（而不是 /*），并重建
+                sh '''
+                    rm -rf content/day06/allure-results
+                    mkdir -p content/day06/allure-results
+                    
+                    # 清理其他临时文件
+                    rm -f content/day06/temp_result_*.xlsx
+                    rm -f content/day06/*.pyc
+                '''
+                
+                // 执行测试
+                sh '''
+                    cd content/day06
+                    python -m pytest test_cases/ \
+                        -v \
+                        --alluredir=./allure-results \
+                        --clean-alluredir
+                        --reruns=1 \                    # 失败重试1次（网络抖动）
+                        --timeout=300 \                 # 每个 case 最多5分钟
+                        --headless \                    # 确保 Chrome 无头模式
+                        || echo "测试有失败，但继续生成报告"
+                '''
+                
+                // 在同一个容器内立即清理（不需要 post 阶段再开新容器）;容器用完即删还有必要清理么？
+                sh '''
+                    pkill Xvfb 2>/dev/null || true
+                    pkill -9 chrome 2>/dev/null || true
                 '''
             }
-        }
-        
-        stage('执行测试') {
-            steps {
-                // 注意路径：content/day06/
-                sh """
-                    cd content/day06
-                    python -m pytest test_cases/TestBaiduPOM.py \
-                        -v \
-                        --alluredir=./allure-results 
-                """
-            }
-        }
-        
-        stage('生成报告') {
-            steps {
-                allure([
-                    includeProperties: false,
-                    jdk: '',
-                    results: [[path: 'content/day06/allure-results']]
-                ])          
-            }
+            
+            post {
+                    always {		// 无论成功失败都要执行
+                        echo '构建结束，Agent 容器自动销毁完成清理'
+                        // 在 Agent 上生成 Allure 报告（Agent 已安装 allure 命令行工具）
+                        allure([
+                           // 安装了插件还需要配置全局命令行工具
+                            includeProperties: false,	 // 报告只显示本身值，没有jenkins属性
+                            jdk: '',	// 没有值，使用系统默认的
+                            results: [[path: 'content/day06/allure-results']]
+                            // 告诉allure去哪里找数据拼成报告
+                        ])
+                    }
+                }
         }
     }
     
     post {
         always {
-            sh 'pkill Xvfb || true'
-            cleanWs()
+            echo '构建结束，Agent 容器自动销毁完成清理'
         }
     }
 }
@@ -634,3 +701,16 @@ Name: 填 allure（这个名字要和 Pipeline 里的一致）
 
 Allure Commandline home: 填 /usr（因为你在 Dockerfile 里软链接到了 /usr/bin/allure，所以 home 是 /usr）
 或者填 /opt/allure-2.24.0（如果你没做软链接，指向实际安装目录）
+
+配置master标签：
+
+pipeline groovy代码中，使用标签获取github代码
+
+![](../picturs/10.png)
+
+##### 结果：
+
+![](../picturs/11.png)
+
+![](../picturs/12.png)
+
