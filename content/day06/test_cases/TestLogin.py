@@ -61,8 +61,9 @@ class TestLogin:
     @allure.description('测试测试网页的登录模块')
     @pytest.mark.flake(reruns=2,reruns_delay=3,only_rerun=['TimeoutException'])
     def test_login_demo(self,driver):
+        url=r'https://demoqa.com/login'
         try:
-            url=r'https://demoqa.com/login'
+            
             with allure.step('步骤1：打开测试网页'):
                 test_login=BaiduPage(driver,15)
             # 测试方法中使用assert, 页面对象中使用if 结合araise;均不会导致程序崩溃，因为Pyetst会处理他们
@@ -72,7 +73,7 @@ class TestLogin:
                 text=test_login.login_to_target('Elson','123456').get_result_text()
             sleep(1)
         except Exception as e:
-            raise e
+            raise 
         
         # print(text)
 

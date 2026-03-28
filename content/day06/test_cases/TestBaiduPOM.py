@@ -123,6 +123,15 @@ class TestBaiduPom:
     def test_data_driven_search(self, driver, data):
         # parametrize 会将[['TC001', '搜索Selenium', 'Selenium', 'Selenium', None, 'Fail', None]]拆成一个实体，单列表
         allure.dynamic.title(f'百度动态搜索关键字：{data[2]}')
+        (
+        case_id,
+        case_name,
+        keyword,
+        expected_result,
+        actual_result,
+        status,
+        remark
+                ) = data
         result_data=[]
         # 方法上方需要装饰器，而方法内部是不需要@
         try:
@@ -135,15 +144,6 @@ class TestBaiduPom:
             # print(f'yesysyeys{data}')
             # for row in data:
             # print(row)
-                (
-                    case_id,
-                    case_name,
-                    keyword,
-                    expected_result,
-                    actual_result,
-                    status,
-                    remark,
-                ) = data
             with allure.step('步骤2：搜索关键字后，获取其对应的title'):
                 actual_result = baidu.search_content(keyword).get_title()
             # 在获取title之前，记得显示判断title是否成功跳转，太快获取的title还是旧有窗口
@@ -168,7 +168,7 @@ class TestBaiduPom:
                 )
             # list接收多个对象而不是参数
         except Exception as e:
-            with allure.step(f'报错步骤：运行搜索案例{data[0]}程序报错了'):
+            with allure.step(f'报错步骤：运行搜索案例{case_id}程序报错了'):
                 # 测试函数的error直接处理，不在上抛
                 status = "Error"
                 remark = f"程序出错啦，原因是：{e}"
@@ -178,7 +178,7 @@ class TestBaiduPom:
                         case_name,
                         keyword,
                         expected_result,
-                        actual_result,
+                        str(e),
                         status,
                         remark,
                     ]
@@ -196,31 +196,32 @@ class TestBaiduPom:
 
 
             # 多进程并发 pytest-xdist;
-            result_df=pd.DataFrame(result_data,columns=[
-                'case_id', 'case_name', 'keyword', 
-                'expected_result', 'actual_result', 
-                'status', 'remark'
-            ])
-            # 表格形式，一个内部列表就是一个实例，也是数据类型从[[]]转换成 pd.dataframe
-            worker_id=os.getenv('PYTEST_XDIST_WORKER','master')
-            # 多进程时，返回对应的进程id,单进程只会返回master; 此处就是区分多进程与当单进程的关键点
-            temp_file=f'temp_result_{worker_id}.xlsx'
+            if result_data:  # 确保有数据才写 Excel
+                result_df=pd.DataFrame(result_data,columns=[
+                    'case_id', 'case_name', 'keyword', 
+                    'expected_result', 'actual_result', 
+                    'status', 'remark'
+                ])
+                # 表格形式，一个内部列表就是一个实例，也是数据类型从[[]]转换成 pd.dataframe
+                worker_id=os.getenv('PYTEST_XDIST_WORKER','master')
+                # 多进程时，返回对应的进程id,单进程只会返回master; 此处就是区分多进程与当单进程的关键点
+                temp_file=f'temp_result_{worker_id}.xlsx'
 
-            # 需要针对进程，来对文件进行不同的输入模式: 单进程 追加，多进程，单个文件
-            if os.path.exists(temp_file):
-                # 文件存在，则是追加
-                existing_data=pd.read_excel(temp_file)
-                curr_worker_data=pd.concat([existing_data,result_df],ignore_index=True)
-                # 始终保持不带行索引号
-                curr_worker_data.to_excel(temp_file,index=False)
-                # pd数据类型，直接方法再次写入该文件，始终保持不带含索引号
+                # 需要针对进程，来对文件进行不同的输入模式: 单进程 追加，多进程，单个文件
+                if os.path.exists(temp_file):
+                    # 文件存在，则是追加
+                    existing_data=pd.read_excel(temp_file)
+                    curr_worker_data=pd.concat([existing_data,result_df],ignore_index=True)
+                    # 始终保持不带行索引号
+                    curr_worker_data.to_excel(temp_file,index=False)
+                    # pd数据类型，直接方法再次写入该文件，始终保持不带含索引号
 
 
-            else:
-                # 不存在。则是直接写入，写入会直接创建文件
-                result_df.to_excel(temp_file,index=False)
+                else:
+                    # 不存在。则是直接写入，写入会直接创建文件
+                    result_df.to_excel(temp_file,index=False)
 
-            # 此处finally 均是写入临时文件，需要conftest.py文件中写对应的后续处理pytest_sessionfinish(session,existstatus)
+                # 此处finally 均是写入临时文件，需要conftest.py文件中写对应的后续处理pytest_sessionfinish(session,existstatus)
 
 
 
