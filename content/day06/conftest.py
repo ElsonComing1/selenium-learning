@@ -54,15 +54,15 @@ def pytest_runtest_makereport(item,call):
                     name="错误详情",
                     attachment_type=allure.attachment_type.TEXT
                 )
-        # 获取hook装饰测试方法的测试报告report"对象"
-        if report.when=='call' and report.failed:
-            # 只在测试进行中（setup 和 teardown之间）同时 要测试结果是failed时，才会执行下面的操作
-            attach_png_reprtext_to_allure()
+            # 获取hook装饰测试方法的测试报告report"对象"
+            if report.when=='call' and report.failed:
+                # 只在测试进行中（setup 和 teardown之间）同时 要测试结果是failed时，才会执行下面的操作
+                attach_png_reprtext_to_allure()
 
-        # if report.when=='call' and report.error:      不存在error类型，failed已经包含所有错误类型，assertionerror exception errpr
-        #     attach_png_reprtext_to_allure()
-    except Exception as e:
-        allure.attach(f"未知错误: {str(e)}", "截图失败", allure.attachment_type.TEXT)
+            # if report.when=='call' and report.error:      不存在error类型，failed已经包含所有错误类型，assertionerror exception errpr
+            #     attach_png_reprtext_to_allure()
+        except Exception as e:
+            allure.attach(f"未知错误: {str(e)}", "截图失败", allure.attachment_type.TEXT)
     
     
 
