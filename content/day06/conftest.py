@@ -37,6 +37,8 @@ def pytest_runtest_makereport(item,call):
     def attach_png_reprtext_to_allure():
         driver=item.funcargs.get('driver') # 获取参数driver 但driver是fixture产生的，所以是获取fixture的driver
         if driver:
+            # 设置页面加载和脚本超时（如果还没设置）
+            driver.set_page_load_timeout(30)
             # 自动添加失败图片
             allure.attach(
                 driver.get_screenshot_as_png(), # 保存到报告中显示
