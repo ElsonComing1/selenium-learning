@@ -62,7 +62,7 @@ class PageBase:
                 self.driver.get(url)
                 return True
             except Exception as e:
-                if i < retries - 1:
+                if i < 3 - 1:
                     raise e
                     time.sleep(3)
                 else:
