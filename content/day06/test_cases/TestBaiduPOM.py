@@ -64,29 +64,30 @@ class TestBaiduPom:
     def driver(self):
         # 需要使用套件里变量的测试，需要其有一个参数名是套件的方法名
         options = Options()
-        # Docker 容器内运行 Chrome 的必需参数（关键！）
-        options.add_argument("--no-sandbox")  # 禁用沙箱（root用户运行必需）
-        options.add_argument("--disable-dev-shm-usage")  # 禁用 /dev/shm（避免内存不足）
-        options.add_argument("--disable-gpu")  # 禁用 GPU 加速（容器内通常无 GPU）
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1920,1080')
 
-        
-        # 无头模式（可选但推荐，更稳定）
-        options.add_argument("--headless=new")  # 添加这行
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        
-        # 设置窗口大小（Xvfb 需要明确分辨率）
-        options.add_argument("--window-size=1920,1080")
-        
-        # 其他稳定性参数
-        options.add_argument("--disable-extensions")
-        options.add_argument("--disable-setuid-sandbox")
-        options.add_argument("--disable-web-security")  # 仅测试环境使用
-        
-        # 增加页面加载和脚本超时（防止 Jenkins 中网络慢导致超时）
-        dr = webdriver.Chrome(options=options)
-        dr.set_page_load_timeout(30)  # 页面加载超时 30 秒
-        yield dr
+        # 新增：禁用图片和 CSS 加速加载
+        options.add_argument('--blink-settings=imagesEnabled=false')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-javascript')  # 如果测试不需要 JS，可启用
+
+        # 新增：设置页面加载策略（不等全部资源加载完）
+        options.page_load_strategy = 'eager'  # 或 'none'
+
+        # 新增：设置 DNS 预读取和缓存
+        options.add_argument('--dns-prefetch-disable')
+        options.add_argument('--disable-browser-side-navigation')
+
+        driver = webdriver.Chrome(options=options)
+
+        # 关键：设置页面加载超时时间为 60 秒（默认 30 秒可能不够）
+        driver.set_page_load_timeout(60)
+        driver.set_script_timeout(30)
+        yield driver
         # 此处的yield是迭代器，会将控制权交予使用该套件名的测试方法，此处dr是内部变量
         dr.quit()
         # 当使用完毕，会关闭浏览器
