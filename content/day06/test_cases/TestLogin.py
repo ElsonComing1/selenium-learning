@@ -52,9 +52,9 @@ class TestLogin:
         # 关键：设置页面加载超时时间为 60 秒（默认 30 秒可能不够）
         driver.set_page_load_timeout(60)
         driver.set_script_timeout(30)
-        yield dr
+        yield driver
         # 此处的yield是迭代器，会将控制权交予使用该套件名的测试方法，此处dr是内部变量
-        dr.quit()
+        driver.quit()
         # 当使用完毕，会关闭浏览器
     @allure.story('测试登录模块')
     @allure.severity(allure.severity_level.BLOCKER)

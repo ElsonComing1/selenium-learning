@@ -89,7 +89,7 @@ class TestBaiduPom:
         driver.set_script_timeout(30)
         yield driver
         # 此处的yield是迭代器，会将控制权交予使用该套件名的测试方法，此处dr是内部变量
-        dr.quit()
+        driver.quit()
         # 当使用完毕，会关闭浏览器
 
     # 类方法，就没有self自己（实例特有），但在类中需要有@staticmethod装饰

@@ -57,8 +57,16 @@ class PageBase:
         # return self.driver,self.wait,self.action
 
     def open_url(self,url:str):
-        self.driver.get(url)
-        return True
+        for i in range(retries):
+            try:
+                self.driver.get(url)
+                return True
+            except Exception as e:
+                if i < retries - 1:
+                    raise e
+                    time.sleep(3)
+                else:
+                    raise
 
     def get_attribute_value(self,locator:Locater,attr_name:str='href'):
         return self.find_clickable_element(locator).get_attribute(attr_name)
