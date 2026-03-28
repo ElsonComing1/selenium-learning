@@ -29,13 +29,27 @@ class TestLogin:
     def driver(self):
         # 需要使用套件里变量的测试，需要其有一个参数名是套件的方法名
         options = Options()
-        # 必须添加以下参数（容器环境必需）
-        options.add_argument("--headless")           # 无头模式（关键！）
-        options.add_argument("--no-sandbox")         # 禁用沙盒（容器必需）
-        options.add_argument("--disable-dev-shm-usage")  # 禁用 /dev/shm（避免内存问题）
-        options.add_argument("--disable-gpu")        # 禁用 GPU（容器内无用）
-        options.add_argument("--start-maximized")  # 新版 Chromium 推荐写法
-        dr = webdriver.chrome(options=options)
+        # Docker 容器内运行 Chrome 的必需参数（关键！）
+        options.add_argument("--no-sandbox")  # 禁用沙箱（root用户运行必需）
+        options.add_argument("--disable-dev-shm-usage")  # 禁用 /dev/shm（避免内存不足）
+        options.add_argument("--disable-gpu")  # 禁用 GPU 加速（容器内通常无 GPU）
+        
+        # 无头模式（可选但推荐，更稳定）
+        options.add_argument("--headless=new")  # 添加这行
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        
+        # 设置窗口大小（Xvfb 需要明确分辨率）
+        options.add_argument("--window-size=1920,1080")
+        
+        # 其他稳定性参数
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--disable-web-security")  # 仅测试环境使用
+        
+        # 增加页面加载和脚本超时（防止 Jenkins 中网络慢导致超时）
+        dr = webdriver.Chrome(options=options)
+        dr.set_page_load_timeout(30)  # 页面加载超时 30 秒
         yield dr
         # 此处的yield是迭代器，会将控制权交予使用该套件名的测试方法，此处dr是内部变量
         dr.quit()

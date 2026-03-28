@@ -62,15 +62,14 @@
 # 基础镜像（Debian系，apt管理）
 FROM python:3.12-slim
 
-# 1. 换国内apt源 + 安装基础工具（含 Java 21）
-# 注意：Debian 12/13 使用 deb822 格式，原文件路径不同，需重建 sources.list
+# 1. 换国内apt源 + 安装基础工具（含 Java 21 和 Xvfb）
 RUN CODENAME=$(awk -F= '/VERSION_CODENAME/{print $2}' /etc/os-release) && \
     rm -f /etc/apt/sources.list.d/debian.sources && \
-    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ ${CODENAME} main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
-    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ ${CODENAME}-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian-security ${CODENAME}-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/  ${CODENAME} main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/  ${CODENAME}-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian-security  ${CODENAME}-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
     apt-get update && \
-    apt-get install -y wget unzip git gnupg2 chromium chromium-driver openjdk-21-jre-headless && \
+    apt-get install -y wget unzip git gnupg2 chromium chromium-driver openjdk-21-jre-headless xvfb xfonts-base fonts-wqy-zenhei && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. 安装Allure（使用本地 COPY，避免网络问题）
