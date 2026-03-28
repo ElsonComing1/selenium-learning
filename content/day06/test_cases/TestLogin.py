@@ -65,7 +65,7 @@ class TestLogin:
         try:
             
             with allure.step('步骤1：打开测试网页'):
-                test_login=BaiduPage(driver,15)
+                test_login=BaiduPage(driver,180)
             # 测试方法中使用assert, 页面对象中使用if 结合araise;均不会导致程序崩溃，因为Pyetst会处理他们
             with allure.step('步骤2：判断是否成打开网页'):
                 assert test_login.open_url(url) is True,f'没能成功打开你想要的网址{url}'
