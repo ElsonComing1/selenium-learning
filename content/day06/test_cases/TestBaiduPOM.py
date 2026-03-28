@@ -123,6 +123,7 @@ class TestBaiduPom:
     def test_data_driven_search(self, driver, data):
         # parametrize 会将[['TC001', '搜索Selenium', 'Selenium', 'Selenium', None, 'Fail', None]]拆成一个实体，单列表
         allure.dynamic.title(f'百度动态搜索关键字：{data[2]}')
+        result_data=[]
         # 方法上方需要装饰器，而方法内部是不需要@
         try:
             # 该方法的参数名字需要与装饰器参数化的第一个参数名一致，且在使用中也必须是driver

@@ -57,7 +57,7 @@ class PageBase:
         # return self.driver,self.wait,self.action
 
     def open_url(self,url:str):
-        for i in range(retries):
+        for i in range(3):
             try:
                 self.driver.get(url)
                 return True
