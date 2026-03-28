@@ -628,3 +628,9 @@ github中的项目名会被jekins中的pipeline项目名顶替
 
 需要装Allure Jenkins Plugins
 
+全局工具设置：
+
+Name: 填 allure（这个名字要和 Pipeline 里的一致）
+
+Allure Commandline home: 填 /usr（因为你在 Dockerfile 里软链接到了 /usr/bin/allure，所以 home 是 /usr）
+或者填 /opt/allure-2.24.0（如果你没做软链接，指向实际安装目录）
