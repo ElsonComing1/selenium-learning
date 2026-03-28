@@ -35,31 +35,36 @@ def pytest_runtest_makereport(item,call):
     report=outcome.get_result()
 
     def attach_png_reprtext_to_allure():
-        driver=item.funcargs.get('driver') # 获取参数driver 但driver是fixture产生的，所以是获取fixture的driver
-        if driver:
-            # 设置页面加载和脚本超时（如果还没设置）
-            driver.set_page_load_timeout(30)
-            # 自动添加失败图片
-            allure.attach(
-                driver.get_screenshot_as_png(), # 保存到报告中显示
-                name='失败截图',
-                attachment_type=allure.attachment_type.PNG
-            )
+        try:
+            driver=item.funcargs.get('driver') # 获取参数driver 但driver是fixture产生的，所以是获取fixture的driver
+            if driver:
+                # 设置页面加载和脚本超时（如果还没设置）
+                driver.set_page_load_timeout(30)
+                # 自动添加失败图片
+                allure.attach(
+                    driver.get_screenshot_as_png(), # 保存到报告中显示
+                    name='失败截图',
+                    attachment_type=allure.attachment_type.PNG
+                )
 
-            allure.attach(
-                f"用例：{item.nodeid}\n错误：{report.longreprtext}",
-                # item.nodeid 当前测试用例完整路径
-                # report.longreprtext 测试失败时的完整错误报告
-                name="错误详情",
-                attachment_type=allure.attachment_type.TEXT
-            )
-    # 获取hook装饰测试方法的测试报告report"对象"
-    if report.when=='call' and report.failed:
-        # 只在测试进行中（setup 和 teardown之间）同时 要测试结果是failed时，才会执行下面的操作
-        attach_png_reprtext_to_allure()
+                allure.attach(
+                    f"用例：{item.nodeid}\n错误：{report.longreprtext}",
+                    # item.nodeid 当前测试用例完整路径
+                    # report.longreprtext 测试失败时的完整错误报告
+                    name="错误详情",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+        # 获取hook装饰测试方法的测试报告report"对象"
+        if report.when=='call' and report.failed:
+            # 只在测试进行中（setup 和 teardown之间）同时 要测试结果是failed时，才会执行下面的操作
+            attach_png_reprtext_to_allure()
 
-    # if report.when=='call' and report.error:      不存在error类型，failed已经包含所有错误类型，assertionerror exception errpr
-    #     attach_png_reprtext_to_allure()
+        # if report.when=='call' and report.error:      不存在error类型，failed已经包含所有错误类型，assertionerror exception errpr
+        #     attach_png_reprtext_to_allure()
+    except Exception as e:
+        allure.attach(f"未知错误: {str(e)}", "截图失败", allure.attachment_type.TEXT)
+    
+    
 
 
 
