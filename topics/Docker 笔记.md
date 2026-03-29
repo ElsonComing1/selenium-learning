@@ -575,6 +575,8 @@ pipeline {
             agent { label 'master' }	// 强制在 Master 运行
             // 指定master节点
             steps {
+                // 关键：先清理 Master 工作区，避免旧数据干扰，看allure-report
+                cleanWs()
                  // 重试 3 次，每次间隔 5 秒
                 timeout(time: 2, unit: 'MINUTES') {	// 防卡死保险
                     // pipeline中的关键字是DSL（领域特定语言）不可乱写
@@ -590,6 +592,7 @@ pipeline {
                             // 私钥是钥匙
                             // 锁与钥匙均有我来分配，为了达到相互信任沟通。（安全）
                         )
+                        
                     }
                 }
                 stash includes: '**/*', name: 'source-code' // 跨节点文件传输
@@ -600,6 +603,7 @@ pipeline {
             }
         }
         
+        // 一个stage可以对应一个agent；一个stages也可以对应一个agent
         stage('Agent 执行测试') {
             // Agent 无需联网，专心执行
             agent { label 'my-test-agent' }		// 启动动态容器，用完即删
@@ -616,8 +620,8 @@ pipeline {
                 // /var/lib/agent/workspace/Selenium-Automation/
  				
                 // 进入容器前先清空 Jenkins 工作区的旧 allure-results
-                cleanWs()
-                sh 'mkdir -p allure-results'
+                // cleanWs()
+                // sh 'mkdir -p allure-results'
                 
                 // 启动 Chrome + Xvfb（耗 CPU/内存）
                 sh '''
@@ -685,79 +689,93 @@ pipeline {
                             find . -name "*.xlsx" -type f 2>/dev/null || echo "未找到 xlsx 文件"
                         '''
                         
-                    
-                        // 在 Agent 上生成 Allure 报告（Agent 已安装 allure 命令行工具）
-                        allure([
-                           // 安装了插件还需要配置全局命令行工具
-                            includeProperties: false,	 // 报告只显示本身值，没有jenkins属性
-                            jdk: '',	// 没有值，使用系统默认的
-                            results: [[path: 'content/day06/allure-results']]
-                            // 告诉allure去哪里找数据拼成报告
-                        ])
-                        
-                        // 将agent生成产物归档
-                         archiveArtifacts(
-                            artifacts:'content/day06/report/*.xlsx',	
-                            // 要归档文件的路径
-                            allowEmptyArchive: true,  // 没找到文件也不报错
-                            fingerprint: true         // 生成指纹防篡改
-                            )
-                        
+                        // 将测试结果传回master(为了allure-report最新报告)
+                        stash includes:'content/day06/allure-results/**, content/day06/report/**',name:'allure-results',allowEmpty:true
+                        // **表示递归当前路径下的全部
                         echo '构建结束，Agent 容器自动销毁完成清理'
                     }
                 }
+            }
+        stage("生成报告"){
+            agent {label "master"}
+            steps{
+                // 获取从agnet的测试结果
+                unstash "allure-results"
+                // 在 Agent 上生成 Allure 报告（Agent 已安装 allure 命令行工具）
+                allure([
+                   // 安装了插件还需要配置全局命令行工具
+                    includeProperties: false,	 // 报告只显示本身值，没有jenkins属性
+                    jdk: '',	// 没有值，使用系统默认的
+                    results: [[path: 'content/day06/allure-results']]
+                    // 告诉allure去哪里找数据拼成报告
+                ])
+                
+                // 将agent生成产物归档
+                 archiveArtifacts(
+                    artifacts:'content/day06/report/*.xlsx',	
+                    // 要归档文件的路径
+                    allowEmptyArchive: true,  // 没找到文件也不报错
+                    fingerprint: true         // 生成指纹防篡改
+                    )
+            }
+            
         }
+        
     }
     
     post {
         success{
             script{
-                
+                sendDingTalk("✅ Selenium 测试报告通过", "green", "无失败用例")
             }
         }
         unstable{
             script{
-                
+                sendDingTalk("⚠️ 测试不稳定", "yellow", "失败用例")
             }
         }
         failure{
             script{
-                
+                sendDingTalk("❌ 测试失败", "green", "无用例通过")
             }
         }
         
         always {
-            echo '构建结束，Agent 容器自动销毁完成清理'
+            echo 'Agent 容器自动销毁完成清理'
         }
     }
 }
 
 
-// 封装发送函数
-def sendDingTalk(String title,String color,String detail){
-    // 从credentials 读取token值
-    withCredentials([string(credentialsId:'dingtalk-robot-token',variable:'DING_TOKEN')]){
-        // 构建消息体（必须包含钉钉设置的关键词"测试报告" "allure"）
-        def json='''
-        	{
-        		"msgtype":"markdown",
-        		"makdown":{
-        			"title":"allure-测试报告"
-        			"text":"### ${title}\\n\\n> **项目**：${env.JOB_NAME}\\n> **构建号**：#${env.BUILD_NUMBER}\\n> **状态**：${currentBuild.result}\\n> **详情**：${detail}\\n> [点击查看 Allure 报告](${env.BUILD_URL}allure)\\n\\n---\\n*${new Date().format('yyyy-MM-dd HH:mm:ss')}*"
-        		},
-        		"at":{
-        			"isAtAll":false
-        		}
-        	}
-        '''
-        // 发送HTTP请求（需要HTTP Request plugin）
-        httpRequest(
-            url:"https://oapi.dingtalk.com/robot/send?access_token=${DING_TOKEN}",
-            httpMode:"POST",
-            contentType:"APPLICATION_JSON",
-            requestBody:json,
-            validRespnseCodes:'200'
+def sendDingTalk(String title, String color, String detail) {
+    withCredentials([string(credentialsId: 'dingtalk-robot-token', variable: 'DING_TOKEN')]) {
+        // 关键：确保包含钉钉关键词"测试报告"或"allure"
+        def json = """
+        {
+            "msgtype": "markdown",
+            "markdown": {
+                "title": "测试报告",
+                "text": "### ${title}\\n\\n> **项目**：${env.JOB_NAME}\\n> **构建号**：#${env.BUILD_NUMBER}\\n> **状态**：${currentBuild.result}\\n> **详情**：${detail}\\n> [点击查看 Allure 报告](${env.BUILD_URL}allure)\\n\\n---\\n*${new Date().format('yyyy-MM-dd HH:mm:ss')}*\\n\\n测试报告"
+            },
+            "at": {
+                "isAtAll": false
+            }
+        }
+        """
+        // 双引号才能转换变量，单引号纯字符串
+        
+        // 或者用关键词"allure"（你的title里已经有了）
+        
+        def response = httpRequest(
+            url: "https://oapi.dingtalk.com/robot/send?access_token=${DING_TOKEN}",
+            httpMode: 'POST',
+            contentType: 'APPLICATION_JSON',
+            requestBody: json,
+            validResponseCodes: '200:299',
+            consoleLogResponseBody: true
         )
+        
+        echo "钉钉返回: ${response.content}"
     }
 }
 ```
@@ -783,9 +801,14 @@ pipeline groovy代码中，使用标签获取github代码
 
 ![](../picturs/10.png)
 
-##### 结果：
+##### 动态定时 报告 钉钉 文档结果(CI/CD)：
 
 ![](../picturs/11.png)
 
 ![](../picturs/12.png)
 
+![](../picturs/14.png)
+
+由于时间关系，等有空再将代码中的xdist并行运行与多agent并行结合一起。
+
+我已完成：**代码提交 → Jenkins 自动拉取 → 自动运行 Selenium 测试 → 生成 Allure 报告 → 钉钉通知** 的完整 CI/CD 流程
