@@ -98,6 +98,7 @@ def pytest_sessionfinish(session,exitstatus):
     # 合并数据all_data ： [pd.DataFrame1,pd.DataFrame2];axis=0 默认纵坐标拼接
     timestamp=datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
     final_file=str(Path(__file__).resolve().parent / 'report' / f'test_report_{timestamp}.xlsx')
+    str(Path(__file__).resolve().parent / 'report').mkdir(exist_ok=True)  # 如果不存在则自动创建
     # 去重
     final_result=final_result.drop_duplicates(subset=['case_id'],keep='last')
     final_result.to_excel(final_file,index=False)
