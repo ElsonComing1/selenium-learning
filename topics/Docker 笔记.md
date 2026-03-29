@@ -661,16 +661,18 @@ pipeline {
                 // 执行测试
                 sh '''
                     cd content/day06
-                    python -m pytest test_cases/ \
-                        -v \
-                        --alluredir=./allure-results \
+                    python -m pytest test_cases/ 
+                        -v 
+                        --alluredir=./allure-results 
                         --clean-alluredir
-                        --reruns=1 \                    # 失败重试1次（网络抖动）
-                        --timeout=300 \                 # 每个 case 最多5分钟
-                        --headless \                    # 确保 Chrome 无头模式
+                        --reruns=1                     
+                        --timeout=300                  
+                        --headless                     
                         || echo "测试有失败，但继续生成报告"
                 '''
-                
+                // --reruns=1                     # 失败重试1次（网络抖动）
+                // --timeout=300                  # 每个 case 最多5分钟
+                // --headless                     # 确保 Chrome 无头模式
                 // 在同一个容器内立即清理（不需要 post 阶段再开新容器）;容器用完即删还有必要清理么？
                 sh '''
                     pkill Xvfb 2>/dev/null || true
@@ -680,7 +682,6 @@ pipeline {
             
             post {
                     always {		// 无论成功失败都要执行
-                        echo '构建结束，Agent 容器自动销毁完成清理'
                         // 在 Agent 上生成 Allure 报告（Agent 已安装 allure 命令行工具）
                         allure([
                            // 安装了插件还需要配置全局命令行工具
@@ -689,6 +690,15 @@ pipeline {
                             results: [[path: 'content/day06/allure-results']]
                             // 告诉allure去哪里找数据拼成报告
                         ])
+                        
+                        // 将agent生成产物归档
+                        archiveArtifacts(
+                            artifacts:'content/day06/report/test_report_*.xlsx',
+                            allowEmptyArchive:true,		// 没找到文件也不报错
+                            fingerprint:true	// 生成指纹防止篡改
+                                        )
+                        
+                        echo '构建结束，Agent 容器自动销毁完成清理'
                     }
                 }
         }
