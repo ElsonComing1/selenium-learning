@@ -104,8 +104,6 @@ def pytest_sessionfinish(session,exitstatus):
 
     # 关键修复2：确保目录存在后再生成文件路径
     report_dir = base_dir / 'report'
-    if len(os.listdir(report_dir)) >= 0:
-        os.rmdir(report_dir)
     report_dir.mkdir(exist_ok=True)  # 先创建目录
 
     final_file=str(Path(__file__).resolve().parent / 'report' / f'test_report_{timestamp}.xlsx')
