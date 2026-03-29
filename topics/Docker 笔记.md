@@ -575,6 +575,7 @@ pipeline {
             agent { label 'master' }	// 强制在 Master 运行
             // 指定master节点
             steps {
+                sh 'pwd'
                  // 重试 3 次，每次间隔 5 秒
                 timeout(time: 2, unit: 'MINUTES') {	// 防卡死保险
                     // pipeline中的关键字是DSL（领域特定语言）不可乱写
@@ -602,21 +603,8 @@ pipeline {
         
         stage('Agent 执行测试') {
             // Agent 无需联网，专心执行
-            // agent { label 'my-test-agent' }		// 启动动态容器，用完即删
-            
-            agent {
-                docker {
-                    image 'my-test:latest'  // 你的镜像名
-                    label 'docker-local'    // 或者你的 label:my-test-agent
-                    args '''
-                        --shm-size=2gb 
-                        -m 2g 
-                        --memory-swap=2g 
-                        --cpus=2
-                        -e DISPLAY=:99
-                    '''  // 关键：增加共享内存和内存限制
-                }
-            }
+            agent { label 'my-test-agent' }		// 启动动态容器，用完即删
+
 
             // 需要配置docker cloud agent模版
             environment {
@@ -629,6 +617,7 @@ pipeline {
  				
                 // 启动 Chrome + Xvfb（耗 CPU/内存）
                 sh '''
+                	pwd
                     # 清理旧的 Xvfb
                     pkill Xvfb 2>/dev/null || true
                     sleep 1
@@ -660,14 +649,14 @@ pipeline {
                 
                 // 执行测试
                 sh '''
+                	pwd
                     cd content/day06
                     python -m pytest test_cases/ 
                         -v 
                         --alluredir=./allure-results 
                         --clean-alluredir
                         --reruns=1                     
-                        --timeout=300                  
-                        --headless                     
+                        --timeout=300                                   
                         || echo "测试有失败，但继续生成报告"
                 '''
                 // --reruns=1                     # 失败重试1次（网络抖动）
@@ -693,7 +682,8 @@ pipeline {
                         
                         // 将agent生成产物归档
                         archiveArtifacts(
-                            artifacts:'content/day06/report/test_report_*.xlsx',
+                            artifacts:'content/day06/report/*.xlsx',	
+                            // 要归档文件的路径
                             allowEmptyArchive:true,		// 没找到文件也不报错
                             fingerprint:true	// 生成指纹防止篡改
                                         )
@@ -705,9 +695,44 @@ pipeline {
     }
     
     post {
+        success{
+            script{
+                
+            }
+        }
+        unstable{
+            script{
+                
+            }
+        }
+        failure{
+            script{
+                
+            }
+        }
+        
         always {
             echo '构建结束，Agent 容器自动销毁完成清理'
         }
+    }
+}
+
+// 封装发送函数
+def sendDingTalk(String title,String color,String detail){
+    // 从credentials 读取token值
+    withCredentials([string(credentialsId:'dingtalk-robot-token',variable:'DING_TOKEN')]){
+        def json='''
+        	{
+        		"msgtype":"markdown",
+        		"makdown":{
+        			"title":"allure-测试报告"
+        			"text":"### ${title}\\n\\n> **项目**：${env.JOB_NAME}\\n> **构建号**：#${env.BUILD_NUMBER}\\n> **状态**：${currentBuild.result}\\n> **详情**：${detail}\\n> [点击查看 Allure 报告](${env.BUILD_URL}allure)\\n\\n---\\n*${new Date().format('yyyy-MM-dd HH:mm:ss')}*"
+        		},
+        		"at":{
+        			"isAtAll":false
+        		}
+        	}
+        '''
     }
 }
 ```

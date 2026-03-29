@@ -97,7 +97,7 @@ def pytest_sessionfinish(session,exitstatus):
     final_result=pd.concat(all_data,ignore_index=True)
     # 合并数据all_data ： [pd.DataFrame1,pd.DataFrame2];axis=0 默认纵坐标拼接
     timestamp=datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
-    final_file=Path(__file__).resolve().parent / 'report' / f'test_report_{timestamp}.xlsx'
+    final_file=str(Path(__file__).resolve().parent / 'report' / f'test_report_{timestamp}.xlsx')
     # 去重
     final_result=final_result.drop_duplicates(subset=['case_id'],keep='last')
     final_result.to_excel(final_file,index=False)
