@@ -44,7 +44,7 @@ class PageBase:
     '''
     driver_count=0
     Locater=tuple[str,str]
-    def __init__(self,driver: WebDriver,outTime:int=10):
+    def __init__(self,driver: WebDriver,outTime:int=180):
         # 实例化对象driver
         self.driver=driver
         # 创建显示等待器

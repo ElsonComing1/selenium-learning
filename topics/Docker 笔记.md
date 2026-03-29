@@ -602,7 +602,22 @@ pipeline {
         
         stage('Agent 执行测试') {
             // Agent 无需联网，专心执行
-            agent { label 'my-test-agent' }		// 启动动态容器，用完即删
+            // agent { label 'my-test-agent' }		// 启动动态容器，用完即删
+            
+            agent {
+                docker {
+                    image 'my-test:latest'  // 你的镜像名
+                    label 'docker-local'    // 或者你的 label:my-test-agent
+                    args '''
+                        --shm-size=2gb 
+                        -m 2g 
+                        --memory-swap=2g 
+                        --cpus=2
+                        -e DISPLAY=:99
+                    '''  // 关键：增加共享内存和内存限制
+                }
+            }
+
             // 需要配置docker cloud agent模版
             environment {
                 DISPLAY = ':99'		// linux没有显示器，需要启动虚拟显示器

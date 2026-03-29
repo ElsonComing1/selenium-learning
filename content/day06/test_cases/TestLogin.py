@@ -59,7 +59,7 @@ class TestLogin:
     @allure.story('测试登录模块')
     @allure.severity(allure.severity_level.BLOCKER)
     @allure.description('测试测试网页的登录模块')
-    @pytest.mark.flake(reruns=2,reruns_delay=3,only_rerun=['TimeoutException'])
+    @pytest.mark.flaky(reruns=2,reruns_delay=3,only_rerun=['TimeoutException'])
     def test_login_demo(self,driver):
         url=r'https://demoqa.com/login'
         try:
