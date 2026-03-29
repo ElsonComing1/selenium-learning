@@ -77,10 +77,14 @@ def pytest_sessionfinish(session,exitstatus):
         return
         # 如果是主进程，则使用return 退出，不会进一步处理
     
-    temp_files=glob.glob(str(Path(__file__).resolve().parent / "test_cases" / 'temp_result_*.xlsx'))
+    # 关键修复1：同时查找根目录和 test_cases/ 下的临时文件
+    base_dir = Path(__file__).resolve().parent
+    temp_files = glob.glob(str(base_dir / "test_cases" / 'temp_result_*.xlsx'))
+    temp_files += glob.glob(str(base_dir / 'temp_result_*.xlsx'))  # 加上根目录查找
     # 使用glob.glob查找指定类型的文件，支持正则。返回列表，默认当前路径查找
     if not bool(temp_files):
-        return 
+        print("⚠️ 没有找到临时 Excel 文件")
+        return
     # 不存在临时文件也会退出，不会后面的操作
 
     all_data=[]
@@ -97,8 +101,12 @@ def pytest_sessionfinish(session,exitstatus):
     final_result=pd.concat(all_data,ignore_index=True)
     # 合并数据all_data ： [pd.DataFrame1,pd.DataFrame2];axis=0 默认纵坐标拼接
     timestamp=datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
+
+    # 关键修复2：确保目录存在后再生成文件路径
+    report_dir = base_dir / 'report'
+    report_dir.mkdir(exist_ok=True)  # 先创建目录
+
     final_file=str(Path(__file__).resolve().parent / 'report' / f'test_report_{timestamp}.xlsx')
-    str(Path(__file__).resolve().parent / 'report').mkdir(exist_ok=True)  # 如果不存在则自动创建
     # 去重
     final_result=final_result.drop_duplicates(subset=['case_id'],keep='last')
     final_result.to_excel(final_file,index=False)
