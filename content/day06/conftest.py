@@ -104,7 +104,7 @@ def pytest_sessionfinish(session,exitstatus):
 
     # 关键修复2：确保目录存在后再生成文件路径
     report_dir = base_dir / 'report'
-    if os.path.exists(report_dir):
+    if len(os.listdir(report_dir)) >= 0:
         os.rmdir(report_dir)
     report_dir.mkdir(exist_ok=True)  # 先创建目录
 

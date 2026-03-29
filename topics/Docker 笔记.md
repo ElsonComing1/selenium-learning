@@ -575,7 +575,6 @@ pipeline {
             agent { label 'master' }	// 强制在 Master 运行
             // 指定master节点
             steps {
-                sh 'pwd'
                  // 重试 3 次，每次间隔 5 秒
                 timeout(time: 2, unit: 'MINUTES') {	// 防卡死保险
                     // pipeline中的关键字是DSL（领域特定语言）不可乱写
@@ -611,13 +610,17 @@ pipeline {
                 DISPLAY = ':99'		// linux没有显示器，需要启动虚拟显示器
             }
             steps {
+                
                 // 从 Master 接收代码（Jenkins 内部传输，不依赖容器网络）
                 unstash 'source-code'
                 // /var/lib/agent/workspace/Selenium-Automation/
  				
+                // 进入容器前先清空 Jenkins 工作区的旧 allure-results
+                cleanWs()
+                sh 'mkdir -p allure-results'
+                
                 // 启动 Chrome + Xvfb（耗 CPU/内存）
                 sh '''
-                	pwd
                     # 清理旧的 Xvfb
                     pkill Xvfb 2>/dev/null || true
                     sleep 1
@@ -634,7 +637,8 @@ pipeline {
                     
                     # 设置权限（确保所有用户可访问显示）
                     export DISPLAY=:99
-                    xhost + 2>/dev/null || true		// # 允许任何用户连接（容器内单用户，无安全风险）
+                    xhost + 2>/dev/null || true		
+                    # 允许任何用户连接（容器内单用户，无安全风险）
                 '''
                 
                  // 关键：彻底删除整个目录（而不是 /*），并重建
@@ -649,19 +653,13 @@ pipeline {
                 
                 // 执行测试
                 sh '''
-                	pwd
                     cd content/day06
-                    python -m pytest test_cases/ 
-                        -v 
-                        --alluredir=./allure-results 
-                        --clean-alluredir
-                        --reruns=1                     
-                        --timeout=300                                   
-                        || echo "测试有失败，但继续生成报告"
+                    python -m pytest test_cases/TestBaiduPOM.py::TestBaiduPom::test_data_driven_search -v --alluredir=./allure-results --clean-alluredir || echo "测试结束"
+                    
+                    echo "=== 检查 Allure 数据是否生成 ==="
+                    ls -la allure-results/ 2>/dev/null || echo "目录不存在"
+                    find allure-results -name "*.json" 2>/dev/null | head -5 || echo "没有 JSON 文件"
                 '''
-                // --reruns=1                     # 失败重试1次（网络抖动）
-                // --timeout=300                  # 每个 case 最多5分钟
-                // --headless                     # 确保 Chrome 无头模式
                 // 在同一个容器内立即清理（不需要 post 阶段再开新容器）;容器用完即删还有必要清理么？
                 sh '''
                     pkill Xvfb 2>/dev/null || true
@@ -671,6 +669,23 @@ pipeline {
             
             post {
                     always {		// 无论成功失败都要执行
+                        // 关键：先检查实际生成的文件
+                        sh '''
+                            echo "=== 当前工作目录 ==="
+                            pwd
+                            ls -la
+                            
+                            echo "=== 检查 allure-results 内容 ==="
+                            ls -la content/day06/allure-results/ 2>/dev/null || echo "allure-results 目录不存在或为空"
+                            
+                            echo "=== 检查 report 目录内容 ==="
+                            ls -la content/day06/report/ 2>/dev/null || echo "report 目录不存在"
+                            
+                            echo "=== 查找所有 xlsx 文件 ==="
+                            find . -name "*.xlsx" -type f 2>/dev/null || echo "未找到 xlsx 文件"
+                        '''
+                        
+                    
                         // 在 Agent 上生成 Allure 报告（Agent 已安装 allure 命令行工具）
                         allure([
                            // 安装了插件还需要配置全局命令行工具
@@ -681,12 +696,12 @@ pipeline {
                         ])
                         
                         // 将agent生成产物归档
-                        archiveArtifacts(
+                         archiveArtifacts(
                             artifacts:'content/day06/report/*.xlsx',	
                             // 要归档文件的路径
-                            allowEmptyArchive:true,		// 没找到文件也不报错
-                            fingerprint:true	// 生成指纹防止篡改
-                                        )
+                            allowEmptyArchive: true,  // 没找到文件也不报错
+                            fingerprint: true         // 生成指纹防篡改
+                            )
                         
                         echo '构建结束，Agent 容器自动销毁完成清理'
                     }
@@ -717,10 +732,12 @@ pipeline {
     }
 }
 
+
 // 封装发送函数
 def sendDingTalk(String title,String color,String detail){
     // 从credentials 读取token值
     withCredentials([string(credentialsId:'dingtalk-robot-token',variable:'DING_TOKEN')]){
+        // 构建消息体（必须包含钉钉设置的关键词"测试报告" "allure"）
         def json='''
         	{
         		"msgtype":"markdown",
@@ -733,6 +750,14 @@ def sendDingTalk(String title,String color,String detail){
         		}
         	}
         '''
+        // 发送HTTP请求（需要HTTP Request plugin）
+        httpRequest(
+            url:"https://oapi.dingtalk.com/robot/send?access_token=${DING_TOKEN}",
+            httpMode:"POST",
+            contentType:"APPLICATION_JSON",
+            requestBody:json,
+            validRespnseCodes:'200'
+        )
     }
 }
 ```
