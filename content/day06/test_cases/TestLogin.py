@@ -1,3 +1,4 @@
+# TestLogin.py
 from pathlib import Path
 
 PROJECT_PATH = str(Path(__file__).parent.parent)
@@ -11,6 +12,7 @@ from selenium.webdriver.chrome.options import Options
 from tools.ExcelHandler import *
 from datetime import datetime
 import pytest,allure
+from loguru import logger
 
 data_file = os.path.join(PROJECT_PATH, "test_data", "test_cases.xlsx")
 
@@ -48,18 +50,20 @@ class TestLogin:
         options.add_argument('--disable-browser-side-navigation')
 
         driver = webdriver.Chrome(options=options)
-
+        logger.info('成功打开浏览器')
         # 关键：设置页面加载超时时间为 60 秒（默认 30 秒可能不够）
         driver.set_page_load_timeout(60)
         driver.set_script_timeout(30)
         yield driver
         # 此处的yield是迭代器，会将控制权交予使用该套件名的测试方法，此处dr是内部变量
         driver.quit()
+        logger.info('成功管理浏览器')
         # 当使用完毕，会关闭浏览器
     @allure.story('测试登录模块')
     @allure.severity(allure.severity_level.BLOCKER)
     @allure.description('测试测试网页的登录模块')
     @pytest.mark.flaky(reruns=2,reruns_delay=3,only_rerun=['TimeoutException'])
+    # 进作用与该方法，--reruns 2 --reruns-delay 3作用于整个测试会话
     def test_login_demo(self,driver):
         url=r'https://demoqa.com/login'
         try:
@@ -69,10 +73,12 @@ class TestLogin:
             # 测试方法中使用assert, 页面对象中使用if 结合araise;均不会导致程序崩溃，因为Pyetst会处理他们
             with allure.step('步骤2：判断是否成打开网页'):
                 assert test_login.open_url(url) is True,f'没能成功打开你想要的网址{url}'
+                logger.info('成功打开网页')
             with allure.step('步骤3：验证登录'):
                 text=test_login.login_to_target('Elson','123456').get_result_text()
             sleep(1)
         except Exception as e:
+            logger.error('登录报错了')
             raise 
         
         # print(text)

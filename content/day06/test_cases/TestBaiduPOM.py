@@ -1,3 +1,4 @@
+# TestBaiduPOM.py
 from pathlib import Path
 import pandas as pd
 PROJECT_PATH=str(Path(__file__).parent.parent)
@@ -11,6 +12,7 @@ from tools.ExcelHandler import *
 from datetime import datetime
 from selenium.common.exceptions import TimeoutException
 import pytest,allure
+from loguru import logger
 
 # @pytest.fixture(scope='class',params=[os.path.join(PROJECT_PATH,'test_data','test_data.xlsx')])
 # def data_file(request): # 此处的函数名，后面的类方法使用时，其类方法的参数也必须是该函数名，一致才能调用
@@ -44,7 +46,7 @@ data_file = os.path.join(PROJECT_PATH, "test_data", "test_cases.xlsx")
     是保证被装饰函数功能完整的情况下，前后有一些别的操作
 
 钩子Hook：
-    是测试函数内部插入别的操作
+    是测试函数测试过程中，插入别的操作
 
 
 '''
@@ -87,10 +89,12 @@ class TestBaiduPom:
         # 关键：设置页面加载超时时间为 60 秒（默认 30 秒可能不够）
         driver.set_page_load_timeout(60)
         driver.set_script_timeout(30)
+        logger.info('浏览器已经生成')
         yield driver
         # 此处的yield是迭代器，会将控制权交予使用该套件名的测试方法，此处dr是内部变量
         driver.quit()
         # 当使用完毕，会关闭浏览器
+        logger.info('浏览器已经关闭')
 
     # 类方法，就没有self自己（实例特有），但在类中需要有@staticmethod装饰
     @staticmethod
@@ -98,17 +102,18 @@ class TestBaiduPom:
     # 实例方法无法在类中调用
     def get_data(data_file: str, sheet: int = 0):
         excel = ExcelHandler(data_file)
+        logger.info('已经创建ExcelHandler类')
         return excel.read_point_sheet_rows(sheet)
 
 
 
     '''
-        由于该参数驱动测试方法比较容易因为时间超时而导致错误，因此下载对应的插件pyets-rerunfailures库
+        由于该参数驱动测试方法比较容易因为时间超时而导致错误，因此下载对应的插件pytest-rerunfailures库
         1. 对指定文件或者类进行失败重试机制：
             pyest ./TestBaiduPOM.y::TestBaiduPom ./TestLogin.py -v --reruns 2 --reruns-delay 3 --alluredir=../allure-results --clean-alluredir
-            会自动失败重试两次，直至遇见pass或者尝试完毕都未成功
+            会自动失败重试两次，直至遇见pass或者尝试完所有次数都未成功
         
-        2. 正对特定方法的重试机制：
+        2. 在特定条件下，对特定方法的重试机制：
             @pytest.mark.flaky(reruns=2,reruns_delay=2,only_rerun=['TimeoutException'])
             失败会休息两秒，用于缓冲，然后再次执行，但要在指定错误条件下，才会执行重试机制, 需要导入相应的库
             rerun两次，总共三次，
@@ -134,27 +139,33 @@ class TestBaiduPom:
                 ) = data
         result_data=[]
         # 方法上方需要装饰器，而方法内部是不需要@
+        # 定义变量放置在try之外，尽量使用定义变量进行判断
         try:
             # 该方法的参数名字需要与装饰器参数化的第一个参数名一致，且在使用中也必须是driver
             baidu = BaiduPage(driver)
+            logger.info('已经实例化类BaiduPage')
             with allure.step('步骤1：打开百度搜索页面'):
                 baidu.open_target_page("https://www.baidu.com")
                 result_data = []
+                logger.info('成功打开百度页面')
 
             # print(f'yesysyeys{data}')
             # for row in data:
             # print(row)
             with allure.step('步骤2：搜索关键字后，获取其对应的title'):
                 actual_result = baidu.search_content(keyword).get_title()
+                logger.info(f'已经搜索完毕关键字{keyword}')
             # 在获取title之前，记得显示判断title是否成功跳转，太快获取的title还是旧有窗口
 
             with allure.step('步骤3：判断获得结果值，是否与期望值匹配'):
                 if str(expected_result) in actual_result:
                     status = "Pass"
                     remark = f"{actual_result}在期望值:{expected_result} 里面"
+                    logger.info(f'{case_id}搜索成功')
                 else:
                     status = "Fail"
                     remark = f"{actual_result}不在期望值:{expected_result} 里面"
+                    logger.warning(f'{case_id}搜索失败')
                 result_data.append(
                     [
                         case_id,
@@ -183,6 +194,7 @@ class TestBaiduPom:
                         remark,
                     ]
                 )
+                logger.error(f'{case_id}程序报错了')
                 # 报错也需要处理
             raise       # 会打印堆栈信息
             # pytest.fail(f'用例执行失败：{e},pytrace=True')  # 不打印堆栈信息
@@ -220,6 +232,7 @@ class TestBaiduPom:
                 else:
                     # 不存在。则是直接写入，写入会直接创建文件
                     result_df.to_excel(temp_file,index=False)
+                logger.info(f'已经将{worker_id}的临时数据写入临时文件{temp_file}')
 
                 # 此处finally 均是写入临时文件，需要conftest.py文件中写对应的后续处理pytest_sessionfinish(session,existstatus)
 
@@ -237,10 +250,14 @@ class TestBaiduPom:
     def test_settings(self, driver):
         try:
             baidu = BaiduPage(driver)
+            logger.info('已经打开百度准备测试点击设置')
             with allure.step('步骤1：打开百度首页'):
+
                 baidu.open_url(r"https://www.baidu.com")
+                logger.info('成功打开首页')
             with allure.step('步骤2：打开设置'):
                 element=baidu.open_settings()
+                logger.info('成功点击设置')
             sleep(2)
         except Exception as e:
             with allure.step(f'报错步骤：{e}'):
@@ -278,7 +295,7 @@ if __name__ == "__main__":
         ]
     )
 '''
-    1. pytest-allure 是 一个让python 和 allure沟通的适配器，运行测试后，会生成一个.json测试文件
+    1. pytest-allure 是 一个让python 和 allure沟通的适配器，运行测试后，会生成一些.json测试文件
     最终通过scoop(windows包管理器) install allure(安装命令行工具) 作用将.json文件生成html报告
 
     2. 运行方式：
@@ -317,4 +334,48 @@ if __name__ == "__main__":
     5. 并行运行,需要下载pytest-xdist库
     pytest ./test_cases/ -v --alluredir=./allure-results --clean-alluredir -n auto  根据电脑核心，自动分配
     pytest ./test_cases/ -v --alluredir=./allure-results --clean-alluredir -n 4 指定并行运行数量 --reruns 2 --resuns-delay 1
+'''
+
+'''
+logging:
+    配置一次，全局生效
+    在根目录级别的conftest中，写
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        filename='test.log',
+        filemode='a'    # 追加
+    )
+    确保最先生效，且多个不同文件可以通过以下方式继承（子类）
+    logger=logging.getLogger(__name__)
+    多次执行，不用再配置基础设置。
+
+loguru:
+    单进程多线程写一个文件，多进程多个文件，进程间资源是独立互不干扰的，一个进程内多个线程是共享进程的资源。
+    适合多进程
+    from loguru import logger
+    在根目录级别的conftest中，写
+
+    # 获取 worker ID（xdist 多进程时用）
+    worker_id = os.environ.get('PYTEST_XDIST_WORKER', 'main')
+    # 移除默认的 handler（避免重复输出）
+    logger.remove()
+    logger.add(
+    level="INFO",
+    f"test_{worker_id}.log",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name} | {message}",
+    enqueue=True,  # 关键：启用进程安全队列
+    encoding="utf-8"
+    )
+
+    # 同时输出到控制台（方便实时查看）
+    logger.add(
+        level="INFO",
+        format="{level} | {message}",
+        lambda msg: print(msg, end="")
+    )
+    logger.info(f"Worker {worker_id} 启动，日志写入: {log_file}")
+
+    确保最先生效，且多个不同文件可以通过以下方式继承（子类）
+    logger.info("开始测试，使用 loguru 记录日志")
 '''

@@ -1,3 +1,4 @@
+# BaiduPage.py
 from .PageBase import *
 
 PROJECT_PATH=Path(__file__).resolve().parent.parent

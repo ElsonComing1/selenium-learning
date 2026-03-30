@@ -843,3 +843,106 @@ def test_unstable_feature():
     assert random.choice([True, False])
 ```
 
+##### 14. pytest过程
+
+```python
+'''
+hook函数（钩子函数）：在被装饰函数中，插入别的操作；写在conftest.py中
+    0. pytest_configure(config)
+
+    1. pyest_sessionstart(session) 只会执行一次整个会话，但对于xdist就是多个会话，就会一一对应
+    session.items 所有用例对象列表；session.config 配置对象
+    
+    2. pytest_runtest_setup(item) 执行N次
+    item.name 用例名，item.nodeid 完整路径，item.funcargs fixture参数
+
+    3. pytest_runtest_makereport(item,call) 执行N次
+    call.when 阶段判断（setup,call.teardown），call.excinfo 异常，item.rep_call 结果对象
+
+    4. pytest_runtest_teardown(item,nextitem) 执行N次
+    item 当前，nextiem 下一个用例，最后一个None
+
+    5. pytest_sessionfinish(session,exitstatus) 只会执行一次整个会话，但对于xdist就是多个会话，就会一一对应
+    exitstatus（0=成功，1=失败，2=中断，3=内部错误，4=用法错误，5=无收集到用例）
+
+    属性讲解：
+
+    item.name           # 用例方法名（如 test_login）
+    item.nodeid         # 完整节点 ID（如 test_a.py::TestClass::test_login）
+    item.location       # 元组 (文件名, 行号, 函数名)
+    item.own_markers    # 标记列表（如 @pytest.mark.flaky）
+    item.funcargs       # dict，包含所有 fixture 传入的参数（如 driver, data）
+    item.cls            # 所属测试类（如果是类方法）
+    item.module         # 所属模块对象
+
+    call.when           # 阶段：'setup'/'call'/'teardown'
+    call.excinfo        # 异常信息对象（失败时），成功为 None
+    call.excinfo.type   # 异常类型（如 TimeoutException）
+    call.excinfo.value  # 异常值（错误消息）
+    call.duration       # 执行耗时（秒）
+    call.result         # 返回值（如果有）
+
+    session.items       # 列表，所有收集到的测试项
+    session.config      # 配置对象，可获取命令行参数
+    session.testscollected  # 收集到的用例总数
+    session.testsfailed     # 失败的用例数
+    session.testspassed     # 通过的用例数
+
+    allure.attach(body,name,attachment_type)    前后代码直接衔接不用路径
+    allure.attach.file(source_path,name,attachment_type)    已经是固定文件
+
+    attachment_type: TEXT | JSON | PNG | HTML | CSV | URI | XLSX | VIDEO
+'''
+
+import allure
+def pytest_sessionstart(session):
+    print(f'一共收集到的测试项数是{len(session.items)}')
+    # 用例总数：session.testscollected
+    print(f'是否并行{session.config.getoption("-n",default=None)}')
+
+
+def pytest_runtest_setup(item):
+    case_name=item.name # test_login
+    full_path=item.nodeid # test_cases/TestLogin.py::TestLogin::test_login
+
+    if 'driver' in item.funcgargs:
+        driver=item.funcargs['driver']
+        print('即将执行case{case_name}')
+
+def pytest_runtest_makereport(item,call):
+    # item获取测试方法的参数，call是状态以及错误信息显示；不同阶段有不同的信息，使用方法
+    status=None
+    if call.when=='call':
+        result_info=call.excinfo
+        if result_info is None:
+            status='PASSED'
+        elif result_info.type in (AssertionError):
+            status='FAILED'
+        else:
+            status='ERROR'
+    
+    case_id=item.funcargs.get('data',[None])[0] if hasattr(item,'funcargs') else None
+
+    if status != "PASSED" and 'driver' in item.funcargs and status != None:
+        driver=item.funcargs['driver']
+        allure.attach(driver.get_screenshot_as_png,'失败截图')
+
+def pytest_runtest_teardown(item,nextitem):
+    print(f'当前用例{item}已经完成')
+    print(f'即将开始下一个案例{nextitem}')
+
+def pytest_sessionfinish(session,exitstatus):
+    status_map = {
+        0: "全部通过",
+        1: "有测试失败", 
+        2: "测试被中断",
+        3: "内部错误",
+        4: "用法错误",
+        5: "未收集到测试用例"
+    }
+    if exitstatus in [0,1]:
+        merge_excel_reports()
+
+# 此模块下可以定义变量，模块级别，多个钩子函数之间可以相互使用，这几个钩子函数是在不同时刻才会自行调用
+```
+
