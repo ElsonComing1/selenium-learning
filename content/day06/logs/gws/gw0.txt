@@ -1,0 +1,10 @@
+2026-03-30 21:40:04 - worker_id=gw0 - conftest - INFO - 日志配置以及完毕，开始输入C:\Users\16531\Desktop\selenium-learning\content\day06\logs\gws\gw0.txt, 打印至终端
+2026-03-30 21:40:05 - worker_id=gw0 - TestBaiduPOM - INFO - 已经创建ExcelHandler类
+2026-03-30 21:42:39 - worker_id=gw0 - TestBaiduPOM - INFO - 浏览器已经生成
+2026-03-30 21:42:39 - worker_id=gw0 - TestBaiduPOM - INFO - 已经实例化类BaiduPage
+2026-03-30 21:42:40 - worker_id=gw0 - TestBaiduPOM - INFO - 成功打开百度页面
+2026-03-30 21:42:47 - worker_id=gw0 - TestBaiduPOM - INFO - 已经搜索完毕关键字Selenium
+2026-03-30 21:42:47 - worker_id=gw0 - TestBaiduPOM - INFO - TC001搜索成功
+2026-03-30 21:42:47 - worker_id=gw0 - TestBaiduPOM - INFO - 已经将gw0的临时数据写入临时文件temp_result_gw0.xlsx
+2026-03-30 21:42:49 - worker_id=gw0 - TestBaiduPOM - INFO - 浏览器已经关闭
+2026-03-30 21:42:53 - worker_id=gw0 - conftest - WARNING - 当前是多进程合并excel

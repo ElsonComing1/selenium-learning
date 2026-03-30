@@ -1,0 +1,4 @@
+2026-03-30 21:40:03 - worker_id=main - conftest - INFO - 日志配置以及完毕，开始输入C:\Users\16531\Desktop\selenium-learning\content\day06\logs\2026_03_30 21_40_03_dir\main_2026_03_30 21_40_03.txt, 打印至终端
+2026-03-30 21:42:54 - worker_id=main - conftest - INFO - 成功合并数据
+2026-03-30 21:42:54 - worker_id=main - conftest - INFO - 成功合并数据
+2026-03-30 21:42:54 - worker_id=main - conftest - SUCCESS - ✅ 最终报告已生成: C:\Users\16531\Desktop\selenium-learning\content\day06\report\test_report_2026-03-30 21-42-54.xlsx（共 2 条记录）

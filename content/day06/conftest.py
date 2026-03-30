@@ -18,10 +18,12 @@ def pytest_configure(config):
     log_dir=Path(__file__).parent / 'logs'
     os.makedirs(log_dir,exist_ok=True)
     logs_numbers=len(os.listdir(log_dir))
-
-    for i in log_dir.iterdir():
-        if i.is_file():
-            os.remove(log_dir / i)
+    worker_id=os.getenv('PYTEST_XDIST_WORKER','main')
+    
+    if worker_id=='main':
+        for i in log_dir.iterdir():
+            if i.is_file():
+                os.remove(log_dir / i)
     # iterdir is_file is_dir都是Path的方法
     # 方法 A：使用 Path 对象（推荐）
     dirs = [dir for dir in log_dir.iterdir() if dir.is_dir()]  # 只取目录
@@ -30,18 +32,22 @@ def pytest_configure(config):
     dirs.sort(key=lambda x: x.stat().st_mtime)  # 按修改时间升序（旧的在前）
     # sort是方法，在原有列表修改，快
     # sorted是函数，需要变量接值，慢
-    if logs_numbers>=10:
-        for dir in dirs:
-            # 默认升序
-            shutil.rmtree(log_dir / dir)
-            # 直接递归删除
-            if len(os.listdir(log_dir))<=10:
-                break
-
-    timestamp=datetime.datetime.now().strftime('%Y_%m_%d %H_%M_%S')
-    worker_id=os.getenv('PYTEST_XDIST_WORKER','main')
-    os.makedirs(log_dir / f'{timestamp}_dir')
-    curr_file_path=log_dir / f'{timestamp}_dir' / f'{worker_id}_{timestamp}.txt'
+    if worker_id=='main':
+        if logs_numbers>=10:
+            for dir in dirs:
+                # 默认升序
+                shutil.rmtree(log_dir / dir)
+                # 直接递归删除
+                if len(os.listdir(log_dir))<=10:
+                    break
+    if worker_id=='main':
+        timestamp=datetime.datetime.now().strftime('%Y_%m_%d %H_%M_%S')
+        os.makedirs(log_dir / f'{timestamp}_dir')
+        curr_file_path=log_dir / f'{timestamp}_dir' / f'{worker_id}_{timestamp}.txt'
+    else:
+        # shutil.rmtree(log_dir / 'gws')
+        os.makedirs(log_dir / 'gws',exist_ok=True)
+        curr_file_path=log_dir / 'gws' / f'{worker_id}.txt'
 
     # 存进进程级全局
     logger.configure(extra={"worker_id":worker_id})
