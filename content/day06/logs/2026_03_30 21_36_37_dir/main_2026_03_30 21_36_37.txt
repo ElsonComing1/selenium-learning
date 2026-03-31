@@ -1,2 +1,0 @@
-2026-03-30 21:36:37 - worker_id=main - conftest - INFO - 日志配置以及完毕，开始输入C:\Users\16531\Desktop\selenium-learning\content\day06\logs\2026_03_30 21_36_37_dir\main_2026_03_30 21_36_37.txt, 打印至终端
-2026-03-30 21:36:39 - worker_id=main - conftest - WARNING - 没有找到临时需要合并的excel文件

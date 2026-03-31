@@ -1,3 +1,0 @@
-2026-03-30 21:40:05 - worker_id=gw6 - conftest - INFO - 日志配置以及完毕，开始输入C:\Users\16531\Desktop\selenium-learning\content\day06\logs\gws\gw6.txt, 打印至终端
-2026-03-30 21:40:06 - worker_id=gw6 - TestBaiduPOM - INFO - 已经创建ExcelHandler类
-2026-03-30 21:40:06 - worker_id=gw6 - conftest - WARNING - 当前是多进程合并excel
