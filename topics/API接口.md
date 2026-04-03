@@ -151,27 +151,157 @@
     ❌ 没有"元素定位"，只有 JSON 字段提取
     ❌ 没有"点击操作"，只有 HTTP 方法（GET/POST）
 
-11. 三层架构(base(基础方法封装) object(page | service) testcase(执行逻辑))
+11. API流程：
+    先拿到需要的资料，然后就是直截了当的编写核心的代码，看能不能通，再是重构代码，最后就是优化维护代码。
+    让使用人员改尽量少的文件，依次达到广泛适用
 
-	1. return 返回值：
-	基础设施层：返回requets.repsonse对象 | json | no self | no bool			
-	业务逻辑层：返回dick list 自定义对象 | no bool | no bool | self(较少)
-	测试断言层：不需要return
-	
-	2. assert书写位置：
-	只写在测试层，基础层和业务层用不着；assert参与测试
-	
-	3. if-raise书写位置：
-	只写在基础层和业务层，测试层使用assert；if-raise参与技术
-	
-	4. try-except[raise1]-[finally]书写位置：
-	基础层和业务层按需使用；测试流程层，要在“期望有异常”情况下，就是想看异常情况下，会是什么结果，才可以有。
+12. 变量规范化
+    1. 模块变量集中管理
+    2. 只在跨 try-except 访问时提前初始化，其他变量就近定义。
+    3. 使用已定义变量（✅ DRY 原则）
+    4. 环境变量 > 硬编码（12-因素应用法）
+    5. 类型注解（Python 3.6+）
+    6. 配置类封装（进阶）
+    7. 避免全局变量污染
+'''
 
-12. pytest的success fail error触发条件：
-	pytest针对测试层，当然它是管理整个框架
-	1. 当所要测试的测试方法开始运行，且实际结果与期望结果一致，就是success；
-	2. 当所要测试的测试方法运行起来，且实际结果与期望结果不一致或者途中有报错，则是fail;
-	3. 当所要测试的测试方法(以test开头1的方法)没有运行起来，初次之外的方法运行起来，且报错，那么就是error
+'''
+requests学习
+    发请求（类似发诊断指令）→ 收响应（类似读诊断数据）→ 验结果（类似判断正/负响应）。
+
+1. 请求构造类（发指令）
+    1. Session级方法（保持会话）
+    session=requests.Session()
+    # 基础请求方法(所有方法都用的该方法)
+    session.request(method='GET',url='',**kwargs)
+
+    # 封装基础方法后的常用方法
+    session.post(url,data=None,json=None,**kwargs)  # 写
+    session.delete(url,**kwargs)            # 删除
+
+    session.put(url,data=None)              # 更新资源
+    session.patch(url,data=None,**kwargs)   # 局部修改
+
+    session.get(url,params=None,**kwargs)   # 查
+    
+    session.head(url)           # 返回响应头，不下载body，检查文件是否存在以及大小
+    session.options(url)        # 查看服务器支持哪些Http方法
+
+    2. 请求参数(kwargs通用)
+    # 查询参数
+    params={"device_id":"BOT001","page":1}
+
+    # 请求体(Body)三选一，不能混用；一个 HTTP 请求只有一个 Body
+    data={"key":"value"}            # 表单格式(application/x-www-form-urlencoded)
+    json={"key","value"}            # JSON格式(application/json最常用)
+    files={"file":open("a.jpg")}    # 文件上传(multipart/form-data)
+    data 和 files 可以混用（ multipart/form-data 允许文本字段和文件字段共存），但 json 和它们绝对不能混用。
+    内部有检查逻辑，同时传会冲突（json 通常优先）
+
+    # 请求头(headers)
+    headers={
+        "Authorization":"Bearer token123",   # 鉴权
+        "Content-Type":"application/json",  # 内容类型
+        "X-request-ID":"uuid-123"   # 链路追踪ID
+    }
+
+    # 超时控制
+    timeout=5   # 总超时5
+    timeout=(3.05,27)   # 元组：（连接超时，读取超时）
+
+    # 其他高级参数
+    allow_redirects=True    # 允许重定向
+    verify=False        # 跳过SSL证书验证
+    cert=('/path/cert.pem','/path/key.pem') # 双向SSL认证
+    proxies={"http":"http://proxy:8080"}    # 代理（翻墙或者内网穿透）
+
+2. 响应处理类（收数据）
+    1. Response对象核心属性
+    response = session.get("https://api.example.com/data")
+
+    # 状态码
+    response.status_code    # 200 ok, 404 not found, 500 server error
+    response.ok             # 快捷判断：true if 200<=status_code<=400
+
+    # 响应体(Body)三种状态
+    response.text           # 字符串（适合普通html文本）
+    response.content        # 字节流bytes(适合图片音频文件下载)
+    response.json()         # json装python dict(最常用，API测试90%用这个)
+
+    # 响应头(Headers)
+    response.headers        # 字典，如{"Content-Type":"application/json"}
+    response.headers.get('X-Requests-ID')   # 获取特定关键字
+
+    # URL信息（避免重定向后，不知道具体URL）    
+    response.url            # 最终访问的url
+    response.history        # 重定向历史列表
+    
+    # 编码信息
+    response.encoding       # 编码格式（utf-8），修改后会重新解析response.txt
+    response.apparent_encoding  # 自动检测编码（不准确，慎用）
+
+    2. response 方法(验证工具)
+    # 状态码断言（一行搞定，失败异常）；如果是400-599 抛出HTTPError,包含详细信息
+    response.raise_for_status()
+
+    # 迭代读取（大文件流式处理，不占用内存）
+    for chunk in response.iter_content(chunk_size=1024):
+        process(chunk)
+
+    # 行迭代（处理文本流）
+    for line in response.lines():
+        print(line.decode('utf-8'))
+
+3. 异常处理类
+    from requests.exceptions import (
+        RequestException,      # 所有异常的父类（万能捕获）
+        HTTPError,             # HTTP 4xx/5xx（raise_for_status 抛出的）
+        ConnectionError,       # 网络连接失败（DNS 解析失败、拒绝连接）
+        Timeout,               # 超时（分连接超时和读取超时）
+        TooManyRedirects,      # 重定向过多（死循环）
+        URLRequired,           # URL 必填但给了 None
+        MissingSchema,         # URL 缺少 http:// 或 https://
+        InvalidSchema,         # URL 协议不支持（如 ftp://）
+        ChunkedEncodingError,  # 分块传输编码错误（网络中断）
+        ContentDecodingError   # gzip/deflate 解压缩失败
+    )
+
+    # 使用示例（类似你 UDS 测试的 try-except）
+    try:
+        resp = session.post(url, json=payload, timeout=5)
+        resp.raise_for_status()  # 检查 HTTP 状态码
+        data = resp.json()
+    except Timeout as e:
+        # 类似诊断超时（ECU 无响应）
+        print(f"请求超时: {e}")
+        raise
+    except ConnectionError as e:
+        # 类似诊断仪物理连接断开
+        print(f"连接失败，检查网络或服务器状态: {e}")
+    except HTTPError as e:
+        # 类似收到负响应码 0x7F
+        print(f"服务器返回错误: {e.response.status_code}")
+        print(f"错误详情: {e.response.text}")
+    except RequestException as e:
+        # 兜底捕获
+        print(f"请求异常: {e}")
+        
+4. 重试策略
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    # 配置重试策略（类似 UDS 诊断的超时重发机制）
+    retry_strategy = Retry(
+        total=3,                    # 总共重试 3 次
+        backoff_factor=1,           # 间隔时间：1s, 2s, 4s（指数退避）
+        status_forcelist=[429, 500, 502, 503, 504],  # 遇到这些状态码才重试
+        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]  # 哪些方法允许重试
+    )
+
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session = requests.Session()
+    session.mount("https://", adapter)  # 给所有 https 请求挂载重试策略
+    session.mount("http://", adapter)
 '''
 ```
 
