@@ -18,9 +18,9 @@ def screenshot_on_failure(func_main)
 	
 strep2:
     @functools.wraps(func_main)	# 实现主要功能函数
-    def wrapper(*args,**kargs):  # 是实现主要功能函数的参数
+    def wrapper(*args,**kwargs):  # 是实现主要功能函数的参数
     	try:
-    		return func_main(*args,**kargs)	# 返回实现主要功能函数
+    		return func_main(*args,**kwargs)	# 返回实现主要功能函数
     	except Exception as e:
     		raise e
 step3: step2在step1里面
@@ -128,15 +128,17 @@ step1(带参数):
 def screenshot_on_failur(folder='error_screenshot',enabled=True)	# 使用关键字参数带有默认值
 
 	return decorate
+	
 step2(装饰器):
 	def decorate(func_main):	# 不带参数此处就直接起名：见名知义;由于带参数，所以此处的名字需要与step1的返回变量名一致
 	
 		reurn wrapper
+		
 step3(包装):
 		@functools.wraps(func_main)
-		def wrapper(*args,**largs):	# 此处的函数名需要与step2的返回变量名同名
+		def wrapper(*args,**kwargs):	# 此处的函数名需要与step2的返回变量名同名
 			try:
-				return func_main(*args,**kargs)	# 返回主要功能函数
+				return func_main(*args,**kwargs)	# 返回主要功能函数
 			except Exception as e:
 				
 				raise e

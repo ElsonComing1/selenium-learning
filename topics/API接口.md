@@ -1,5 +1,7 @@
 ### API接口
 
+#### 1. 基础知识
+
 ```python
 '''
 1. Pytest执行顺序：
@@ -13,7 +15,7 @@
     URL: URL与API没关系；URL 是完整地址，是字符串地址；API 是"怎么敲门、怎么对话"的完整约定，是行为规范。
     Endpoint = URL 中的 Path 部分（如 /v1/robots/status），是资源定位。
     eg: 查询机器人状态
-        URL: https://api.zhuimi.com/v1/robots/status
+        URL: https://api.zhuimi.com/v1/robots/status（域名+endpoint1）
         method: GET
         params: device_id(string)
         返回: json {"voltage": 12.5, "status": "running"}
@@ -83,7 +85,8 @@
 
     requests:每次都是新tcp连接; 每次都要花费时间握手
     Session(服务器中，Session会将当前会话Id存入cookie放置在客户浏览器) session内部维护TCP连接池，避免重复建立连接
-        适用场景：自动化测试、爬虫、API 客户端（需要保持登录状态）
+    适用场景：自动化测试、爬虫、API 客户端（需要保持登录状态）
+    
     cookie(客户浏览器中，会有expire)
 
     第一次：客户端 → [握手] → 服务器 → 传数据 → [保持连接] (Session 会省去握手时间)
@@ -105,7 +108,7 @@
     1. 每一层都需要__init__.py用于暴露库；__all__=[str]白名单适用from module import *；无法避开指定导入
     2. 导入顺序：最先写0依赖，再写依赖少且是单向，依赖方向始终是单向，不可形成环形。
     3. python内部库（轻量库）以及第三方库（多为重量库）那个文件需要，显示导入，不可隐式导入（使用的变量来自前一个文件导入的库）；自定义库采用1 2方式构造
-    4. 第三方库可以写在需要的业务库中，外加，当真正需要时，再导入=lazy 导入
+    4. 第三方库可以写在需要的业务库中；另外，当真正需要使用时，再导入=lazy 导入
 
 7. API 接口采用Service Object Model(面向服务)
                  API测试            UI测试             loguru
@@ -133,12 +136,12 @@
         └── 支付服务 (Payment Service) ← 业务模块
             └── POST   /api/payments/charge  ← API
     
-    一个域名下，有多个业务模块；一个业务模块下，有多个API；API=URL + method + params + response
+    一个域名下，有多个业务模块；一个业务模块下，有多个API；API=URL(域名+endpoint) + method + params + response
     业务模块=服务(Service)，一个服务指的就是业务模块(一组相关的API集合)。单个API叫"接口"或"API 端点（API Endpoint）"
 
     https://api.example.com:8080/api/v1/users/123?active=true&page=1
     \_____________________/  \_/ \______________/ \________________/
-            Domain          Port  Path/Endpoint   Query String
+            Domain          Port  Path | Endpoint   params
     \______________________________________________________________/
                             (URI)
 
@@ -152,7 +155,7 @@
     ❌ 没有"点击操作"，只有 HTTP 方法（GET/POST）
 
 11. API流程：
-    先拿到需要的资料，然后就是直截了当的编写核心的代码，看能不能通，再是重构代码，最后就是优化维护代码。
+    先拿到需要的资料；然后就是直截了当的编写核心的代码，看能不能通；再是重构代码（技术层 业务层 测试层）；最后就是优化维护代码。
     让使用人员改尽量少的文件，依次达到广泛适用
 
 12. 变量规范化
@@ -305,3 +308,246 @@ requests学习
 '''
 ```
 
+#### 2. HTTP API 功能测试
+
+##### 1. 平台调研
+
+平台地址（域名）：http://httpbin.org/
+
+
+
+6个核心API端点（覆盖完整的测试场景）：
+
+| HTTP   Method | Endpoint                    | 功能描述           | 请求示例                          | 响应特点                |
+| ------------- | --------------------------- | ------------------ | --------------------------------- | :---------------------- |
+| GET           | /ip                         | 获取请求ip         | 无                                | 返回请求者ip            |
+| GET           | /headers                    | 获取请求头         | 无                                | 回显发送的Headers       |
+| POST          | /post                       | 提交JSON数据       | {"name":"test"}                   | 返回提交的数据+响应头   |
+| PUT           | /put                        | 全量更新           | {"job":"senior"}                  | 返回更新后的数据        |
+| DELETE        | /delete                     | 删除资源           | 无                                | 返回删除确认            |
+| GET           | /basic-auth/{user}/{passwd} | 基础认证           | Header: Authorization: Basic xxx  | 401(失败)   / 200(成功) |
+| GET           | /bearer                     | Bearer   Token认证 | Header: Authorization: Bearer xxx | 验证Token有效性         |
+| GET           | /delay/{seconds}            | 延迟响应           | /delay/3                          | 延迟3秒后返回           |
+
+
+
+训练业务流程设计（模拟真实企业场景）：
+
+```plain
+获取IP(验证网络) ——> 携带Token访问受保护资源 ——> POST提交业务数据 ——> PUT更新数据 ——> DELETE清理数据 ——> 验证延迟接口性能
+```
+
+
+
+环境准备：
+
+```txt
+# file path: C:\Users\16531\Desktop\selenium-learning\content\API_Project\requirements.txt
+requests==2.31.0
+```
+
+​		该requirements.txt文件需要不断更新，当需要其他第三库的时候，便于他人使用你的代码。
+
+安装指令：
+
+```bash
+pip install -r C:\Users\16531\Desktop\selenium-learning\content\API_Project\requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+
+
+测试域名连通性验证：
+
+```python
+import requests
+url='http://httpbin.org/ip'
+response=requests.get(url)
+response.raise_for_status()
+print(response.status_code)
+# 获取期望值200
+# 执行结果
+# PS C:\Users\16531\Desktop\selenium-learning> & D:\Python312\python.exe     c:/Users/16531/Desktop/selenium-learning/content/API_Project/verify_network_connectivity.py
+# 200
+```
+
+
+
+##### 2. 探路期-硬编码跑通
+
+​		目标：一个文件test_smoke.py，最原始的方式，跑通httpbin.org的全流程
+
+```python
+import requests,json,time
+
+def test_httpbin_full_flow():
+    '''
+        硬编码测试：httpbin.org完整流程
+        包含：IP查询 -> 认证 -> POST -> PUT -> DELETE -> 延迟测试
+    '''
+    base_url=r"http://httpbin.org"
+    print("=" * 60)
+    print("开始Phase 1 硬编码测试 - httpbin.org")
+    print("=" * 60)
+
+    # =========Step 1：基础连通性测试===========
+    print("\n[Step 1] 获取请求IP (验证网络连通)...")
+    ip_resp=requests.get(f"{base_url}/ip",timeout=5)
+    assert ip_resp.status_code==200,f"网络不通{ip_resp.status_code}"
+    json_result=ip_resp.json()
+    print(f"✅ 网络通畅，你的ip：{json_result['origin']}")
+
+    # =========Step 2：模拟认证（Bearer Token）===========
+    print("\n[Step 2] 模拟认证（Bearer Token）...")
+    token='bootcamp_token_123456'   
+    headers={
+        'Authorization':f'Bearer {token}',
+        'Content-Type':'application/json',
+        'Accept':'application/json',
+        'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0',
+        'Cookie':''
+    }
+
+    # 访问受保护资源（httpbin会回显我们的Header）
+    auth_resp=requests.get(f'{base_url}/headers',headers=headers,timeout=5)
+    assert auth_resp.status_code==200,f"返回状态码:{auth_resp.status_code}不对"
+    received_json=auth_resp.json()
+    received_headers=received_json['headers']
+    assert 'Authorization' in received_headers,"Token应该被服务器收到"
+    print(f"✅ 认证通过，服务器收到:{received_headers['Authorization'][:20]}...")
+
+    # ========== Step 3: 提交业务数据（POST）==========
+    print("\n[Step 3] 提交业务数据（POST JSON）...")
+    business_data={
+        "username": "bootcamp_trainee",
+        "role": "qa_engineer",
+        "project": "api_automation",
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    post_resp=requests.post(f'{base_url}/post',json=business_data,headers=headers,timeout=5)
+    assert post_resp.status_code==200,"POST应该返回200"
+    response_data=post_resp.json()
+    assert response_data['json']==business_data,'服务器应该返回相同数据'
+    print(f'  ✅ POST成功，服务器回显: {response_data['json']['username']}')
+    print(f'     请求ID: {response_data['headers']['Host']}')
+    print(f'all {response_data}')
+
+    # ========== Step 4: 更新数据（PUT）==========
+    print("\n[Step 4] 更新数据（PUT）...")
+    update_data = {
+        "username": "bootcamp_trainee",
+        "role": "senior_qa_engineer",  # 升职了
+        "level": 2
+    }
+    put_resp=requests.put(f"{base_url}/put",json=update_data,headers=headers,timeout=5)
+    assert put_resp.status_code==200,"PUT应该返回200"
+    put_result=put_resp.json()
+    print(f'put_result:{put_result}')
+    assert put_result['json']['role']=='senior_qa_engineer'
+    print(f"  ✅ PUT成功，新职位: {put_result['json']['role']}")
+
+    # ========== Step 5: 删除数据（DELETE）==========
+    print("\n[Step 5] 删除数据（DELETE）...")
+    delete_resp=requests.delete(f"{base_url}/delete",headers=headers,timeout=5)
+    assert delete_resp.status_code == 200
+    delete_result = delete_resp.json()
+    assert delete_result['data']==''        # delete通常没有body
+    print(f"  ✅ DELETE成功，服务器确认: {delete_result['url']}")
+
+    # ========== Step 6: 基础认证测试（Basic Auth）==========
+    print("\n[Step 6] 基础认证测试（Basic Auth）...")
+    auther_user='admin'
+    auther_pass='secret123'
+    basic_resp =requests.get(
+        f'{base_url}/basic-auth/{auther_user}/{auther_pass}',
+        auth=(auther_user,auther_pass),     # requests自动处理basic auth编码
+        timeout=5
+        )
+    print(f'basic_resp:{basic_resp.json()}')
+    assert basic_resp.status_code == 200
+    assert basic_resp.json()["authenticated"] is True
+    assert basic_resp.json()["user"] == auther_user
+    print(f"  ✅ Basic Auth成功，用户: {basic_resp.json()['user']}")
+
+    # ========== Step 7: 性能测试（延迟接口）==========
+    print("\n[Step 7] 延迟接口测试（模拟慢接口）...")
+    delay_seconds=2
+    start_time=time.time()
+    delay_resp=requests.get(f'{base_url}/delay/{delay_seconds}',timeout=10)
+    elapsed=time.time()-start_time
+
+    assert delay_resp.status_code == 200
+    assert elapsed >= delay_seconds, f"应该至少延迟{delay_seconds}秒"
+    print(f"  ✅ 延迟接口正常，实际耗时: {elapsed:.2f}秒")
+
+    # ========== 完成 ==========
+    print("\n" + "=" * 60)
+    print("🎉 Phase 1 完成！所有硬编码步骤跑通！")
+    print("   下一步：开始 Phase 2 重构（三层架构）")
+    print("=" * 60)
+if __name__=="__main__":
+    test_httpbin_full_flow()
+```
+
+1. 所有方法均会返回json数据，包括delete
+
+2. 经过NAT(Network Address translate)后，是互联网IP全球唯一；而本地的ipconfig是路由器下的。解决ip不够用问题。
+
+3. 不通API返回的json数据字段不一样
+
+4. HTTP请求=信封（headers）+信纸（body）
+
+   常见headers字段：
+
+   Authorization	身份凭证（我是谁）		与token一起使用
+
+   Content-Type	信纸格式（告诉对方怎么看）
+
+   User-Agent		客户端是谁（什么浏览器）
+
+   Accept				期望返回格式（我要JSON还是HTML）
+
+   Cookie				状态保持（维持登录会话）
+
+5. Token是临时凭证（临时使用权限）
+
+   ```json
+   {
+     "user_id": 10086,
+     "username": "admin",
+     "role": "qa_engineer",
+     "exp": 1712222222  // 过期时间（关键！）
+   }
+   ```
+
+6. Cookie有会话Cookie还有持久Cookie，后者关闭浏览器后，还能继续保持会话，存在硬盘。
+
+7. Bearer Token vs Basic Auth
+
+   Bearer Token是临时通行证，而后者是验证身份；前者不暴露密码。
+
+8. 何时传headers参数
+
+   默认是requests会自带headers参数，只有一下特俗需求才会显示传递
+
+   | 场景                | 必须传的 Header                  | 示例                             |
+   | ------------------- | -------------------------------- | -------------------------------- |
+   | **需要登录**        | `Authorization`                  | Bearer Token                     |
+   | **POST JSON 数据**  | `Content-Type: application/json` | `json=` 参数**自动帮你加**了     |
+   | **要求返回 JSON**   | `Accept: application/json`       | 有些 API 默认返回 HTML，需要指定 |
+   | **防爬虫/特殊标识** | `User-Agent`                     | 模拟浏览器访问                   |
+   | **携带 Cookie**     | `Cookie`                         | 维持登录会话                     |
+
+9. 延迟服务用途
+
+   故意让服务器延迟响应，当前进程阻塞等待，用于验证超时机制，重试逻辑，验证用户体验。
+
+##### 3. 筑路期 - 三层架构重构
+
+1. 搭建基础框架
+
+​		搭建基础框架，基础框架能通就行，不要很高深，后面就是一边使用一边定型。
+
+
+
+​		
