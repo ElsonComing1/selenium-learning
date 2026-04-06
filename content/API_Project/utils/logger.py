@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from loguru import logger
 from pathlib import Path
 
@@ -41,8 +42,7 @@ def setup_logger():
     logger.add(
         sys.stderr,         # 输出至控制台
         level='DEBUG',       # 只显示比>=INFO级别的信息，INFO WARNING ERROR SUCCESS
-        format='''
-        <green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{module:<20}</cyan> | {function:<20} | {message}''',
+        format='<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{module:<20}</cyan> | {function:<20} | {message:<}',
         # 进行颜色设置
         colorize=True
     )

@@ -1,2 +1,5 @@
 requests==2.31.0
 loguru==0.7.3
+pytest==7.4.3
+allure-pytest==2.13.2
+pytest-rerunfailures==13.0

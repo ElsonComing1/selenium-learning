@@ -1,6 +1,7 @@
 import requests
 
-from config import get_config, get_base_url, log
+from config import get_config, get_base_url
+from utils import log
 
 
 class BaseApi:
@@ -11,8 +12,8 @@ class BaseApi:
 
     def __init__(self, session: requests.Session = None):
         # 获取环境，然后实例化
-        self.base_url = get_base_url
-        self.config = get_config
+        self.base_url = get_base_url()
+        self.config = get_config()
         # 当根目录级别没有创建session就会自动使用or后面创建session确保成功
         self.session = session or requests.Session()
 

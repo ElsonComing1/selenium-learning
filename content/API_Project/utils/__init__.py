@@ -1,5 +1,5 @@
 '''__init__.py 文件向外面的目录暴露同层级的文件级变量'''
-from .exceptionTools import common_exception
+from .exceptionTools import common_exception,type_parse
 from .logger import setup_logger,log
 # 外层使用可以直接写最外层目录不用完整书写绝对路径；上面使用的相对路径
 

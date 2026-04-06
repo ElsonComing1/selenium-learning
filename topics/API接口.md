@@ -312,11 +312,11 @@ requests学习
 
 ##### 1. 平台调研
 
-平台地址（域名）：http://httpbin.org/
+###### 1. 平台地址（域名）：http://httpbin.org/
 
 
 
-6个核心API端点（覆盖完整的测试场景）：
+###### 2. 6个核心API端点（覆盖完整的测试场景）：
 
 | HTTP   Method | Endpoint                    | 功能描述           | 请求示例                          | 响应特点                |
 | ------------- | --------------------------- | ------------------ | --------------------------------- | :---------------------- |
@@ -331,7 +331,7 @@ requests学习
 
 
 
-训练业务流程设计（模拟真实企业场景）：
+###### 3. 训练业务流程设计（模拟真实企业场景）：
 
 ```plain
 获取IP(验证网络) ——> 携带Token访问受保护资源 ——> POST提交业务数据 ——> PUT更新数据 ——> DELETE清理数据 ——> 验证延迟接口性能
@@ -339,7 +339,7 @@ requests学习
 
 
 
-环境准备：
+###### 4. 环境准备：
 
 ```txt
 # file path: C:\Users\16531\Desktop\selenium-learning\content\API_Project\requirements.txt
@@ -348,7 +348,7 @@ requests==2.31.0
 
 ​		该requirements.txt文件需要不断更新，当需要其他第三库的时候，便于他人使用你的代码。
 
-安装指令：
+###### 5. 安装指令：
 
 ```bash
 pip install -r C:\Users\16531\Desktop\selenium-learning\content\API_Project\requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
@@ -356,7 +356,7 @@ pip install -r C:\Users\16531\Desktop\selenium-learning\content\API_Project\requ
 
 
 
-测试域名连通性验证：
+###### 6. 测试域名连通性验证：
 
 ```python
 import requests
@@ -374,7 +374,7 @@ print(response.status_code)
 
 ##### 2. 探路期-硬编码跑通
 
-​		目标：一个文件test_smoke.py，最原始的方式，跑通httpbin.org的全流程
+​	目标：一个文件test_smoke.py，最原始的方式，跑通httpbin.org的全流程
 
 ```python
 import requests,json,time
@@ -544,10 +544,472 @@ if __name__=="__main__":
 
 ##### 3. 筑路期 - 三层架构重构
 
-1. 搭建基础框架
+###### 1. 框架
 
-​		搭建基础框架，基础框架能通就行，不要很高深，后面就是一边使用一边定型。
+```bash
+
+```
+
+###### 2. 环境配置
+
+```python
+"""
+环境配置中心
+httpbin.org 在国内有镜像，如果官方慢可切换
+"""
+from utils import common_exception
+
+ENV = "production"  # 可以改一个文件的一个变量，切换不同环境
+
+CONFIG = {
+    'production':{
+        'base_url':'http://httpbin.org',
+        'timeout':5,
+        'long_timeout':10,
+        'auth':{
+            'username':'admin',
+            'password':'secret123'
+        },
+        'default_token':'bootcamp_token_123456'
+    },
+    'mirror':{
+        'base_url':'http://httpbin.org',    # 国内镜像但地址一样
+        'timeout':5,
+        'long_timeout':10,
+        'auth':{
+            'username':'admin',
+            'password':'secret123'
+        },
+        'default_tokne':'bootcamp_token_123456'
+    }
+
+}
+
+@common_exception
+def get_config():
+    return CONFIG.get(ENV)
 
 
+@common_exception
+def get_base_url():
+    return get_config()['base_url']
+```
 
-​		
+###### 3. 日志器配置
+
+```python
+import sys
+from loguru import logger
+from pathlib import Path
+
+from .exceptionTools import common_exception
+# 同层级导入模块必须.
+
+test='你成功测试S'
+
+@common_exception
+def steup_logger():
+    '''配置loguru'''
+    # 清空日志器，避免串扰
+    logger.remove()
+    # 日志目录
+    log_dir=Path(__file__).parent.parent / 'logs'
+    # 确保日志目录存在
+    log_dir.mkdir(exist_ok=True)
+    # 错误日志目录
+    error_log_dir=log_dir / 'error_logs'
+    # 确保错误日志路径存在
+    error_log_dir.mkdir(exist_ok=True)
+
+    # 程序启动时生成固定时间戳
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f'httpbin_API_test_{run_id}.log'
+    error_log_file=error_log_dir / f'httpbin_API_test_error_{run_id}.log'
+
+    # 配置日志文件详细结构
+    logger.add(
+        str(log_file),
+        level='DEBUG',
+        format='{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {module:<20} | {function:<20} | {message}',
+        # 设置时间 等级 文件名 函数|方法 日志消息
+        # rotation='10MB',     # 日志轮转，每达到10MB开始清理旧日志
+        retention=20,           # 只保留最近20个日志文件；同时满足，既可以非固定的日志文件名，又可以控制文件数量，防止日志爆炸
+        encoding='utf-8'        # 防止乱码
+    )
+
+    # 控制台日志配置
+    logger.add(
+        sys.stderr,         # 输出至控制台
+        level='INFO',       # 只显示比>=INFO级别的信息，INFO WARNING ERROR SUCCESS
+        format='''
+        <green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{module:<20}</cyan> | {function:<20} | {message}''',
+        # 进行颜色设置
+        colorize=True
+    )
+
+    # 错误日志提纯
+    logger.add(
+        str(error_log_file),
+        level='ERROR',      # 必须大写
+        format='{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {module:<20} | {function:<20} | {message}',
+        retention=20,           # 只保留最近20个日志文件；同时满足，既可以非固定的日志文件名，又可以控制文件数量，防止日志爆炸
+        encoding='utf-8'        # 防止乱码
+    )
+    return logger
+
+```
+
+###### 4. 通用异常装饰器
+
+```python
+import functools
+import inspect
+from typing import Dict,Any,Type
+
+def common_exception(func_main):
+    @functools.wraps(func_main)
+    def wrapper(*args,**kwargs):
+        try:
+            return func_main(*args,**kwargs)
+        except Exception as e:
+            # e 就是错误的内容
+            raise e
+
+    return wrapper
+
+def type_parse(**type_map:Type):
+    '''
+    多参数类型检查器
+    用法：
+    @type_parse(id=int,name=str,price=float)
+    def process(id, name, price):
+        pass
+    '''
+    def decorate(func):
+        sig=inspect.signature(func)
+        param_names=list(sig.parameters.keys())
+        # 回去被装饰函数的参数名称，构成一个列表
+        @functools.wraps(func)
+        def wrapper(*args,**kwargs):
+            bound_kwargs=sig.bind(*args,**kwargs)
+            # 将参数名称与参数值对应构成字典，但是有默认值的参数，且没有传递值，就需要使用apply_defaults进行使用默认值
+            bound_kwargs.apply_defaults()
+            # 没有默认值的形参是必传参数
+            for param_name, expected_type in bound_kwargs.items():
+                if param_name not in param_names:
+                    raise TypeError(f'参数{param_name}不存在函数签名中')
+                value=bound_kwargs.arguments[param_name]
+                # 检查类型（允许 None 跳过，除非类型是 type(None)）
+                if value is not None and not isinstance(value, expected_type):
+                    raise TypeError(
+                        f"参数 '{param_name}' 类型错误: "
+                        f"期望 {expected_type.__name__}, "
+                        f"实际得到 {type(value).__name__} (值: {value!r})"
+                    )
+            return func(*args,**kwargs)
+        return wrapper
+    return decorate
+```
+
+###### 5. 基础层（技术层）
+
+```python
+import requests
+
+from config import get_config, get_base_url, log
+
+
+class BaseApi:
+    """
+    HTTP 基础封装类
+    职责：管理网络连接，不管业务逻辑
+    """
+
+    def __init__(self, session: requests.Session = None):
+        # 获取环境，然后实例化
+        self.base_url = get_base_url
+        self.config = get_config
+        # 当根目录级别没有创建session就会自动使用or后面创建session确保成功
+        self.session = session or requests.Session()
+
+        # 设置当前会话的请求头
+        self.session.headers.update(
+            {
+                "Accept": "application/json",  # 设置当前接受返回的数据格式为json
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0",
+                # 设置当前会话的客户端使用的浏览器是什么
+            }
+        )
+        # update可以一次改多个值
+        log.info(f"BaseApi初始化完成，目标: {self.base_url}")
+
+    def _request(self, method: str, endpoint: str, **kwargs):
+        """
+        统一请求方法
+        :param method: POST/PATCH/DELETE/PUT/GET
+        :param endpoint: 如 '/ip'，'/post'
+        :param kwargs: json,params,headers,timeout等
+        :return: dict（解析后的JSON）
+        """
+        url = rf"{self.base_url}{endpoint}"
+
+        # 设置超时（如果没有传值就用默认值）
+        if "timeout" not in kwargs:
+            kwargs["timeout"] = self.config["timeout"]
+        log.debug(f"[HTTP] {method} {url}")
+        # 技术层是debug 不是info
+
+        try:
+            response = self.session.request(method, url, **kwargs)
+            # 400-599会自动报错，程序会停止
+            response.raise_for_status()
+
+            # 处理204 No content(DELETE借口)
+            if response.status_code == 204:
+                return {}
+                # 返回空内容，因为该对应接口已经删完数据
+
+            return response.json()
+            # 处理DELETE方法，其余方法返回json数据
+
+        except requests.Timeout as e:
+            log.error(f"请求超时：{method} {url}")
+            raise TimeoutError(f"接口{endpoint}超时") from e
+            # TimeoutError(f'接口{endpoint}超时')整理一遍信息，再结合from e就可以保留堆栈信息，有可以显示翻译信息
+        except request.HTTPError as e:
+            log.error(f"HTTP错误{respnse.status_code}: {response.text[:200]}")
+            raise RuntimeError(f"HTTP {response.status_code}: {response.text}") from e
+        except Exception as e:
+            log.error(f"请求异常{e}")
+            raise e
+            # 技术基础层，直接上抛问题
+
+    def get(self, endpoint: str, params: dict = None, **kwargs):
+        """GET请求"""
+        return self._request("GET", endpoint, params=params, **kwargs)
+        # _request中，没有params，但有**kwargs会被包含进去
+
+    def post(self,endpoint:str,json_data:dict=None,**kwargs): 
+        '''POST 请求（JSON格式）'''
+        if 'headers' in kwargs:
+            headers=kwargs.pop('headers',{})
+            # 获取输入的headers
+        headers.setdefault("Content-Type", "application/json")  
+        # if 'Content-Type' not in headers:
+        #     headers['Content-Type']='application/json'
+        # 尊重用户选择
+        return self._request('POST',endpoint,json_data=json_data,**kwargs)
+        # 单个变量要在最前面，关键字变量紧接着后面，然后是**kwargs
+
+    def put(self,endpoint:str=None,json_data:dict=None,**kwargs):
+        '''PUT请求（全量更新）'''
+        headers=kwargs.pop('headers')
+        # 获取用户传入的值
+        headers.setdefault({'Content-Type':'application/json'})
+        # 设置默认值，但是有用户值，就会是用户值
+        return self._request(endpoint,json_data=json_data,**kwargs)
+
+    def delete(self,endpoint:str,**kwargs):
+        '''DELETE请求'''
+        return self._request(endpoint,**kwargs)
+
+    def set_auth_token(self,token:str):
+        '''设置bearer token(供Service层使用)'''
+        self.session.headers.update({'Authorization':f'Bearer {token}'})
+        # 对当前会话设置token，拿去临时权限
+        log.debug(f"Token已设置: {token[:10]}...")
+        # token在headers中
+    
+    def set_basic_auth(self,username:str,password:str):
+        '''设置Basic Auth（requests会自动编码）'''
+        self.session.auth=(username,password)
+        # 单独列出
+        log.debug(f'Basic Auth已设置: {username}')
+        
+```
+
+​	Session 常用属性/配置知识补充：
+
+| 属性          | 类型                | 作用                               | 示例                                                         |
+| ------------- | ------------------- | ---------------------------------- | ------------------------------------------------------------ |
+| **`auth`**    | `tuple`             | Basic Auth 账号密码                | `session.auth = ('user', 'pass')`                            |
+| **`headers`** | `dict`              | **默认请求头**（所有请求自动带上） | `session.headers.update({'X-Token': 'xxx'})`                 |
+| **`cookies`** | `RequestsCookieJar` | **会话保持**（自动管理 Cookie）    | 登录后自动携带，无需手动传                                   |
+| **`params`**  | `dict`              | 默认查询参数（每次请求自动附加）   | `session.params = {'api_key': 'xxx'}`                        |
+| **`verify`**  | `bool`              | SSL 证书验证开关                   | `session.verify = False`（慎用！）                           |
+| **`proxies`** | `dict`              | 代理设置                           | `session.proxies = {'http': 'http://127.0.0.1:8080'}`        |
+| **`timeout`** | `float/tuple`       | 默认超时时间                       | 注意：Session 没有直接的 timeout 属性，需通过 `request` 方法或自定义 Adapter |
+
+###### 6. 业务层
+
+```python
+from api import BaseApi
+from utils import log, type_parse
+from config import get_config
+
+
+class HttpbinCoreService(BaseApi):
+    """
+    httpbin 核心业务服务（IP查询、POST/PUT/DELETE、延迟）
+    """
+
+    def get_ip(self) -> dict:
+        """获取请求IP"""
+        log.info("查询当前IP...")
+        return self.get("/ip")
+
+    @type_parse("dict", param_name="data")
+    def submit_data(self, data: dict):
+        """
+        提交JSON数据（POST）
+        :param data:要提交的字典数据
+        :return:服务器回显数据
+        """
+        log.info(f"提交数据：{data}")
+        result = self.post("/post", json_data=data)
+        return result
+
+    @type_parse("dict", param_name="data")
+    def update_data(self, data: dict = None) -> dict:
+        """更新数据（PUT）"""
+        log.info(f"更新数据：{data}")
+        return self.put(endpoint="/put", json_data=data)
+
+    def delete_resource(self) -> dict:
+        """删除资源（DELETE）"""
+        log.info("执行删除操作...")
+        return self.delete(endpoint="/delete")
+
+    @type_parse("int", param_name="seconds")
+    def test_delay(self, secodns: int) -> dict:
+        """
+        测试延迟接口
+        :params seconds 延迟秒数
+        """
+        log.info(f"测试延迟接口：{seconds}秒")
+        # 使用长超时
+        return self._request(
+            method="GET", endpoint="/delay", timeout=get_config["long_timeout"]
+        )
+
+    def get_request_headers(self)->dict:
+        '''获取服务器收到的请求头（用于调试认证）'''
+        return self.get('/headers')
+
+
+class HttpbinAuthService(BaseApi):
+    '''
+    httpbin 认证服务（Basic Auth、Bearer Token验证）
+    '''
+    def __init__(self,session=None):
+        super.__init__(session)
+        # BaseApi().__init__(session)
+        self.credentials=get_config()['auth']
+
+    def basic_auth_login(self)->dict:
+        '''
+        使用Basic Auth登录
+        返回：认证结果（包含authenticated字段）
+        '''
+        user=self.credentials['username']
+        password=self.credentials['password']
+
+        log.info(f'尝试Basic Auth登录：{user}')
+
+        # 先设置认证信息
+        self.set_basic_auth(user,password)
+
+        # 访问受保护资源
+        result=self.get(endpoint=f'/basic_auth/{user}/{password}')
+        return result
+
+    @type_parse(cur_type='str',param_name='token')
+    def bearer_auth_check(self,token:str=None)->dict:
+        '''
+        验证Bearer Token（通过查看服务器回显的Headers）
+        '''
+        if token:
+            self.set_auth_token(token)
+
+        result=self.get('/headers')
+        return result
+'''
+    Basic Auth是“账号密码登录”，一次登录后面就不用再显示输入，当前会话一直保持；
+    Bearer Token是“令牌验证”，效果同上
+'''
+```
+
+###### 7. 根目录`conftest.py`
+
+```python
+import pytest
+from api import HttpbinAuthService,HttpbinCoreService
+from utils import setup_logger,common_exception,log
+from config import get_config
+
+
+# 在根目录级别，初始化日志，后面就可以直接使用log
+setup_logger()
+
+@common_exception
+@pytest.fixture(scope='session')
+def api_session():
+    '''
+        全局session（类似Selenium的driver_session）
+        整个测试会话期间复用tcp连接，省去多次建立TCP连接环节
+    '''
+    log.info('创建全局Session...')
+    session=requests.Session()
+    yield session
+    session.close()
+    log.info('全局Session关闭')
+    # 一个session可以有多个服务，似一个浏览器对个标签
+
+@pytest.fixture(scope='session')
+def core_service(api_session):
+    '''
+    使用同一个会话，来实现不同服务，当前是业务服务
+    '''
+    service=HttpbinCoreService(api_session)
+    # 实例化对象业务类，使用父类BaseApi构造
+    return service
+
+@pytest.fixture(scope='session')
+def auth_service(api_session):
+    '''
+    使用同一个session,创建不同服务，当前是认证服务
+    '''
+    service=HttpbinAuthService(api_session)
+    # 实例化认证类，通过基类BaseApi构造
+    return service
+
+@pytest.fixture(scope='function')
+def authenticated_core(api_session):
+    '''
+    已认证的core服务（每个测试函数独立，避免Token污染）
+    不通用户拥有不同的临时权限
+    '''
+    service=HttpbinCoreService(api_session)
+    token=get_config()['default_token']
+    service.set_auth_token(token)
+    log.info(f"测试函数获取已认证实例，Token: {token[:10]}...")
+    return service
+'''
+Session 复用：省 TCP 连接（性能）
+Service 分离：业务逻辑解耦（可维护）
+authenticated_core 隔离：认证状态不串扰（稳定性）
+'''
+```
+
+​	执行顺序保证：
+
+1. 先跑 `core_service` 测试（确保网络通）
+
+2. 再跑 `auth_service` 测试（确保能登录）
+
+3. 最后跑 `authenticated_core` 测试（确保业务正常）
+
+   不同Token代表着不通权限
+
+###### 8. 测试层
+
