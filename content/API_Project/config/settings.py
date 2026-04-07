@@ -39,3 +39,8 @@ def get_config():
 def get_base_url():
     return get_config()['base_url']
 
+'''
+├── config/
+│   ├── config.yaml          # 多环境配置
+│   └── config_loader.py     # 配置读取    
+'''

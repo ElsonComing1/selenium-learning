@@ -61,7 +61,7 @@ class BaseApi:
             log.error(f"请求超时：{method} {url}")
             raise TimeoutError(f"接口{endpoint}超时") from e
             # TimeoutError(f'接口{endpoint}超时')整理一遍信息，再结合from e就可以保留堆栈信息，有可以显示翻译信息
-        except request.HTTPError as e:
+        except requests.HTTPError as e:
             log.error(f"HTTP错误{respnse.status_code}: {response.text[:200]}")
             raise RuntimeError(f"HTTP {response.status_code}: {response.text}") from e
         except Exception as e:
@@ -74,40 +74,38 @@ class BaseApi:
         return self._request("GET", endpoint, params=params, **kwargs)
         # _request中，没有params，但有**kwargs会被包含进去
 
-    def post(self,endpoint:str,json_data:dict=None,**kwargs): 
-        '''POST 请求（JSON格式）'''
-        if 'headers' in kwargs:
-            headers=kwargs.pop('headers',{})
-            # 获取输入的headers
-        headers.setdefault("Content-Type", "application/json")  
+    def post(self, endpoint: str, json_data: dict = None, **kwargs):
+        """POST 请求（JSON格式）"""
+        headers = kwargs.pop("headers", {})
+        # 获取输入的headers
+        headers.setdefault("Content-Type", "application/json")
         # if 'Content-Type' not in headers:
         #     headers['Content-Type']='application/json'
         # 尊重用户选择
-        return self._request('POST',endpoint,json_data=json_data,**kwargs)
+        kwargs["headers"] = headers
+        return self._request("POST", endpoint, json=json_data, **kwargs)
         # 单个变量要在最前面，关键字变量紧接着后面，然后是**kwargs
 
-    def put(self,endpoint:str=None,json_data:dict=None,**kwargs):
-        '''PUT请求（全量更新）'''
-        headers=kwargs.pop('headers')
-        # 获取用户传入的值
-        headers.setdefault({'Content-Type':'application/json'})
-        # 设置默认值，但是有用户值，就会是用户值
-        return self._request(endpoint,json_data=json_data,**kwargs)
+    def put(self, endpoint: str = None, json_data: dict = None, **kwargs):
+        """PUT请求（全量更新）"""
+        headers = kwargs.pop("headers", {})  # 必须要有 , {} 默认值！
+        headers.setdefault("Content-Type", "application/json")
+        kwargs["headers"] = headers
+        return self._request("PUT", endpoint, json=json_data, **kwargs)
 
-    def delete(self,endpoint:str,**kwargs):
-        '''DELETE请求'''
-        return self._request(endpoint,**kwargs)
+    def delete(self, endpoint: str, **kwargs):
+        """DELETE请求"""
+        return self._request("DELETE", endpoint, **kwargs)
 
-    def set_auth_token(self,token:str):
-        '''设置bearer token(供Service层使用)'''
-        self.session.headers.update({'Authorization':f'Bearer {token}'})
+    def set_auth_token(self, token: str):
+        """设置bearer token(供Service层使用)"""
+        self.session.headers.update({"Authorization": f"Bearer {token}"})
         # 对当前会话设置token，拿去临时权限
         log.debug(f"Token已设置: {token[:10]}...")
         # token在headers中
-    
-    def set_basic_auth(self,username:str,password:str):
-        '''设置Basic Auth（requests会自动编码）'''
-        self.session.auth=(username,password)
+
+    def set_basic_auth(self, username: str, password: str):
+        """设置Basic Auth（requests会自动编码）"""
+        self.session.auth = (username, password)
         # 单独列出
-        log.debug(f'Basic Auth已设置: {username}')
-        
+        log.debug(f"Basic Auth已设置: {username}")

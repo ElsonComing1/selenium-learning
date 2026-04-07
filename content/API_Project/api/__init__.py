@@ -1,6 +1,3 @@
-from .base_api import BaseApi
-from .services import HttpbinAuthService, HttpbinCoreService  # 必须层层都写
+from .httpbin_service import HttpbinAuthService, HttpbinCoreService
 
-__all__=[
-    'BaseApi','HttpbinAuthService','HttpbinCoreService'
-]
+__all__ = ["HttpbinCoreService", "HttpbinAuthService"]

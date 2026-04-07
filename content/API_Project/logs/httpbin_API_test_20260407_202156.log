@@ -1,0 +1,7 @@
+2026-04-07 20:21:56 | INFO     | conftest             | api_session          | 创建全局Session...
+2026-04-07 20:21:56 | INFO     | base_api             | __init__             | BaseApi初始化完成，目标: http://httpbin.org
+2026-04-07 20:21:56 | INFO     | httpbin_service      | get_ip               | 查询当前IP...
+2026-04-07 20:21:56 | DEBUG    | base_api             | _request             | [HTTP] GET http://httpbin.org/ip
+2026-04-07 20:21:57 | INFO     | httpbin_service      | test_delay           | 测试延迟接口：2秒
+2026-04-07 20:21:57 | DEBUG    | base_api             | _request             | [HTTP] GET http://httpbin.org/delay/2
+2026-04-07 20:21:59 | INFO     | conftest             | api_session          | 全局Session关闭

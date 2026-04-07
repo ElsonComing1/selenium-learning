@@ -1,0 +1,8 @@
+2026-04-07 20:27:33 | INFO     | conftest             | api_session          | 创建全局Session...
+2026-04-07 20:27:33 | INFO     | base_api             | __init__             | BaseApi初始化完成，目标: http://httpbin.org
+2026-04-07 20:27:33 | DEBUG    | base_api             | set_auth_token       | Token已设置: test-token...
+2026-04-07 20:27:33 | DEBUG    | base_api             | _request             | [HTTP] GET http://httpbin.org/headers
+2026-04-07 20:27:33 | INFO     | httpbin_service      | basic_auth_login     | 尝试Basic Auth登录：admin
+2026-04-07 20:27:33 | DEBUG    | base_api             | set_basic_auth       | Basic Auth已设置: admin
+2026-04-07 20:27:33 | DEBUG    | base_api             | _request             | [HTTP] GET http://httpbin.org/basic-auth/admin/secret123
+2026-04-07 20:27:34 | INFO     | conftest             | api_session          | 全局Session关闭

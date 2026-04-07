@@ -57,6 +57,13 @@ def authenticated_core(api_session):
     service.set_auth_token(token)
     log.info(f"测试函数获取已认证实例，Token: {token[:10]}...")
     return service
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    """每个测试用例执行后自动换行"""
+    yield
+    print()  # 在测试结束后输出空行
+
 '''
 Session 复用：省 TCP 连接（性能）
 Service 分离：业务逻辑解耦（可维护）
