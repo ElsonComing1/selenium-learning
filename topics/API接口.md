@@ -1013,3 +1013,146 @@ authenticated_core 隔离：认证状态不串扰（稳定性）
 
 ###### 8. 测试层
 
+###### 9. pytest钩子函数执行逻辑
+
+| 钩子函数                                             | 作用域       | 执行次数                                                | 执行时机                        | 核心用途                                           |
+| :--------------------------------------------------- | ------------ | ------------------------------------------------------- | ------------------------------- | -------------------------------------------------- |
+| ***`pytest_addoption(parser)`***                     | **Session**  | **1次**（最早）                                         | pytest 启动，解析**命令行**之前 | 添加**自定义命令行**选项（如 `--env=prod`）        |
+| ***`pytest_configure(config)`***                     | **Session**  | **1次**                                                 | **配置对象**创建**后**          | 注册插件、**修改配置**、初始化全局资源             |
+| ***`pytest_sessionstart(session)`***                 | **Session**  | **1次**                                                 | 测试会话**开始时**              | **建立数据库连接、启动测试环境**                   |
+| `pytest_collection_modifyitems(config, items)`       | **Session**  | **1次**                                                 | 收集完**所有测试**用例后        | 用例**排序**、打标签、过滤用例                     |
+| `pytest_generate_tests(metafunc)`                    | **Function** | **每个参数化函数1次**                                   | 生成测试参数时                  | 动态参数化（比 `@pytest.mark.parametrize` 更灵活） |
+| ***`pytest_runtest_setup(item)`***                   | **Function** | **每个测试函数1次**                                     | 执行 `setup` **前**             | 准备测试数据、**mock 初始化**                      |
+| ***`pytest_runtest_protocol(item, nextitem)`***      | **Function** | **每个测试函数1次**                                     | 包裹整个**测试生命周期**        | 控制测试执行流程、添加切面逻辑                     |
+| `pytest_runtest_call(item)`                          | **Function** | **每个测试函数1次**                                     | 执行**实际测试代码**时          | 包裹测试函数执行（在 protocol 内部）               |
+| ***`pytest_runtest_teardown(item, nextitem)`***      | **Function** | **每个测试函数1次**                                     | 执行 `teardown` **后**          | 清理资源（注意：**即使失败**也会执行）             |
+| ***`pytest_runtest_makereport(item, call)`***        | **Function** | **每个阶段1次**（**setup/call/teardown** 各1次，共3次） | 每个阶段结束**后**              | **最常用**：生成报告、判断结果、失败截图           |
+| ***`pytest_fixture_setup(fixturedef, request)`***    | **Fixture**  | **每个 fixture 1次**                                    | fixture 初始化**时**            | 修改 fixture 行为                                  |
+| `pytest_fixture_post_finalizer(fixturedef, request)` | **Fixture**  | **每个 fixture 1次**                                    | fixture 销毁**后**              | fixture 清理验证                                   |
+| ***`pytest_sessionfinish(session, exitstatus)`***    | **Session**  | **1次**（最后）                                         | **所有测试**结束后              | 生成报告、关闭连接、发送通知                       |
+
+1. pytest_runtest_makereport(item,call)
+
+   ```python
+   @pytest.hookimpl(hookwrapper=True)
+   def pytest_runtest_makereport(item, call):
+       # call.when 告诉你当前是哪个阶段
+       if call.when == "setup":
+           print("【setup 阶段】无论成功失败都会进这里")
+       elif call.when == "call":
+           print("【实际测试执行阶段】这才是我们通常关心的")
+           if call.excinfo is not None:
+               print("测试失败了！可以在这里截图/记录日志")
+       elif call.when == "teardown":
+           print("【teardown 阶段】清理阶段，通常忽略")
+   ```
+
+   
+
+2. web自动化截图
+
+   ```python
+   @pytest.hookimpl(hookwrapper=True)
+   def pytest_runtest_makereport(item, call):
+       outcome = yield
+       report = outcome.get_result()
+       
+       # 只在实际测试(call)且失败时截图
+       if call.when == "call" and report.failed:
+           driver = item.funcargs.get('driver')  # 获取 fixture 中的 driver
+           if driver:
+               driver.save_screenshot(f"failed_{item.name}.png")
+   ```
+
+   
+
+3. pytest_generate_tests与@pytest.mark.parametrize的关系
+
+   ```python
+   # @pytest.mark.parametrize 是声明式的
+   # pytest_generate_tests 是编程式的，更早执行（收集阶段）
+   
+   # 动态参数化，无需在函数上加装饰器
+   def pytest_generate_tests(metafunc):
+       if "user_data" in metafunc.fixturenames:
+           # 从数据库/文件读取参数
+           metafunc.parametrize("user_data", [
+               {"name": "张三", "age": 20},
+               {"name": "李四", "age": 25}
+           ])
+   # 该部分学习pymsql时，需要深入学习
+   ```
+
+   
+
+4. pytest_configure vs pytest_sessionstart
+
+   | 对比项           | pytest\_configure   | pytest\_sessionstart |
+   | ---------------- | ------------------- | -------------------- |
+   | **执行顺序**     | 更早                | 较晚                 |
+   | **主要用途**     | 注册插件、添加 mark | 建立连接、初始化资源 |
+   | **测试用例收集** | 尚未开始            | 可能已完成收集       |
+   | **Session 对象** | 正在创建            | 已完全可用           |
+
+   **最佳实践**：
+
+   - 配置类操作 → `pytest_configure`
+   - 资源初始化（如创建 Session）→ `pytest_sessionstart`
+
+###### 10. 钩子函数常用组合模版
+
+1. 命令行传参 + 环境配置
+
+   ```python
+   # conftest.py
+   import pytest
+   
+   def pytest_addoption(parser):
+       """添加自定义命令行选项"""
+       parser.addoption(
+           "--env", default="test", 
+           help="测试环境: test/staging/prod"
+       )
+   
+   def pytest_configure(config):
+       """读取选项并设置全局变量"""
+       env = config.getoption("--env")
+       # 可以存入 config.stash 或全局变量供后续使用
+       config.stash["env"] = env
+   
+   @pytest.fixture(scope="session")
+   def env_config(request):
+       return request.config.stash["env"]
+   ```
+
+   
+
+2. 用力自动打标签
+
+   ```python
+   def pytest_collection_modifyitems(config, items):
+       """自动根据函数名添加标记"""
+       for item in items:
+           if "login" in item.nodeid:
+               item.add_marker(pytest.mark.login)
+           if "smoke" in item.name:
+               item.add_marker(pytest.mark.smoke)
+   ```
+
+   口诀：
+
+   ```bash
+   Session 级最早：
+     addoption → configure → sessionstart
+   
+   Function 级最密：
+     setup → call → teardown（各配一个 makereport）
+   
+   收集阶段在中间：
+     collect → generate_tests → modify_items
+   
+   结束收尾最重要：
+     sessionfinish（资源不释放，运维来找你）
+   ```
+
+   

@@ -1,8 +1,9 @@
+# test_03
 import pytest
 from utils import type_parse
 from api import HttpbinAuthService, HttpbinCoreService
 
-
+@type_parse(authenticated_core=HttpbinCoreService)
 def test_submit_business_data(authenticated_core):
     """
     测试提交业务数据（POST）
@@ -22,7 +23,7 @@ def test_submit_business_data(authenticated_core):
     assert result["json"] == business_data
     assert result["url"] == "http://httpbin.org/post"
 
-
+@type_parse(authenticated_core=HttpbinCoreService)
 def test_update_data_flow(authenticated_core):
     """
     测试更新流程（PUT）
@@ -32,7 +33,7 @@ def test_update_data_flow(authenticated_core):
     assert result["json"]["level"] == 2
     assert result["json"]["status"] == "active"
 
-
+@type_parse(authenticated_core=HttpbinCoreService)
 def test_delete_operation(authenticated_core):
     """
     测试删除（DELETE）

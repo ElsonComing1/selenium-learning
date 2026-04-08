@@ -1,7 +1,7 @@
+# base_api.py
 import requests
 
-from config import get_config, get_base_url
-from utils import log
+from config import get_config, get_base_url, log
 
 
 class BaseApi:
@@ -14,6 +14,8 @@ class BaseApi:
         # 获取环境，然后实例化
         self.base_url = get_base_url()
         self.config = get_config()
+        # 配置环境是可以变化的，但是会话是贯穿始终，任何配置均是围绕会话进行的
+        # 因此会话是初始化所需要的参数，来进行控制是否需要创建会话
         # 当根目录级别没有创建session就会自动使用or后面创建session确保成功
         self.session = session or requests.Session()
 
@@ -63,7 +65,8 @@ class BaseApi:
             # TimeoutError(f'接口{endpoint}超时')整理一遍信息，再结合from e就可以保留堆栈信息，有可以显示翻译信息
         except requests.HTTPError as e:
             log.error(f"HTTP错误{respnse.status_code}: {response.text[:200]}")
-            raise RuntimeError(f"HTTP {response.status_code}: {response.text}") from e
+            raise RuntimeError(
+                f"HTTP {response.status_code}: {response.text}") from e
         except Exception as e:
             log.error(f"请求异常{e}")
             raise e

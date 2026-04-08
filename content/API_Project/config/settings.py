@@ -1,46 +1,37 @@
+# settings.py
 """
 环境配置中心
 httpbin.org 在国内有镜像，如果官方慢可切换
 """
-from utils import common_exception
 
-ENV = "production"  # 可以改一个文件的一个变量，切换不同环境
+ENV = "production"  # 可切换为 "mirror"（国内镜像）
 
 CONFIG = {
-    'production':{
-        'base_url':'http://httpbin.org',
-        'timeout':5,
-        'long_timeout':10,
-        'auth':{
-            'username':'admin',
-            'password':'secret123'
+    "production": {
+        "base_url": "http://httpbin.org",  # 官方地址（你当前用的）
+        "timeout": 5,
+        "long_timeout": 10,  # 延迟接口用
+        "auth": {
+            "username": "admin",
+            "password": "secret123"
         },
-        'default_token':'bootcamp_token_123456'
+        "default_token": "bootcamp_token_123456"
     },
-    'mirror':{
-        'base_url':'http://httpbin.org',    # 国内镜像但地址一样
-        'timeout':5,
-        'long_timeout':10,
-        'auth':{
-            'username':'admin',
-            'password':'secret123'
+    "mirror": {
+        "base_url": "http://httpbin.org ",  # 国内有镜像但地址一样，CDN不同
+        "timeout": 5,
+        "long_timeout": 10,
+        "auth": {
+            "username": "admin", 
+            "password": "secret123"
         },
-        'default_tokne':'bootcamp_token_123456'
+        "default_token": "bootcamp_token_123456"
     }
-
 }
 
-@common_exception
 def get_config():
-    return CONFIG.get(ENV)
+    """获取当前环境配置"""
+    return CONFIG[ENV]
 
-
-@common_exception
 def get_base_url():
-    return get_config()['base_url']
-
-'''
-├── config/
-│   ├── config.yaml          # 多环境配置
-│   └── config_loader.py     # 配置读取    
-'''
+    return get_config()["base_url"]

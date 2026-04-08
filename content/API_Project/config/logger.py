@@ -2,11 +2,9 @@ import sys
 from datetime import datetime
 from loguru import logger
 from pathlib import Path
-
-from .exceptionTools import common_exception
+from utils import common_exception
 # 同层级导入模块必须.
 
-test='你成功测试S'
 
 @common_exception
 def setup_logger():
@@ -14,18 +12,18 @@ def setup_logger():
     # 清空日志器，避免串扰
     logger.remove()
     # 日志目录
-    log_dir=Path(__file__).parent.parent / 'logs'
+    log_dir = Path(__file__).parent.parent / 'logs'
     # 确保日志目录存在
     log_dir.mkdir(exist_ok=True)
     # 错误日志目录
-    error_log_dir=log_dir / 'error_logs'
+    error_log_dir = log_dir / 'error_logs'
     # 确保错误日志路径存在
     error_log_dir.mkdir(exist_ok=True)
 
     # 程序启动时生成固定时间戳
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f'httpbin_API_test_{run_id}.log'
-    error_log_file=error_log_dir / f'httpbin_API_test_error_{run_id}.log'
+    error_log_file = error_log_dir / f'httpbin_API_test_error_{run_id}.log'
 
     # 配置日志文件详细结构
     logger.add(
@@ -56,4 +54,7 @@ def setup_logger():
         encoding='utf-8'        # 防止乱码
     )
     return logger
-log=setup_logger()
+
+
+log = setup_logger()
+# 构造一次，可以任意文件导入使用，不在需要调用setup_logger()

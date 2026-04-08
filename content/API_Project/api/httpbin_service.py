@@ -1,6 +1,7 @@
+# httpbin_service.py
 from core import BaseApi
-from utils import log, type_parse
-from config import get_config
+from utils import type_parse
+from config import get_config, log
 
 
 class HttpbinCoreService(BaseApi):
