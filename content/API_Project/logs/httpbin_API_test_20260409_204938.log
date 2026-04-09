@@ -1,0 +1,9 @@
+2026-04-09 20:49:38 | INFO     | conftest             | api_session          | 创建全局Session...
+2026-04-09 20:49:38 | INFO     | base_api             | __init__             | BaseApi初始化完成，目标: http://httpbin.org 
+2026-04-09 20:49:38 | INFO     | httpbin_service      | get_ip               | 查询当前IP...
+2026-04-09 20:49:38 | DEBUG    | base_api             | _request             | [HTTP] GET http://httpbin.org /ip
+2026-04-09 20:49:38 | ERROR    | base_api             | _request             | 请求异常HTTPConnectionPool(host='httpbin.org%20', port=80): Max retries exceeded with url: /ip (Caused by NameResolutionError("HTTPConnection(host='httpbin.org%20', port=80): Failed to resolve 'httpbin.org%20' ([Errno 11001] getaddrinfo failed)"))
+2026-04-09 20:49:38 | INFO     | httpbin_service      | test_delay           | 测试延迟接口：2秒
+2026-04-09 20:49:38 | DEBUG    | base_api             | _request             | [HTTP] GET http://httpbin.org /delay/2
+2026-04-09 20:49:38 | ERROR    | base_api             | _request             | 请求异常HTTPConnectionPool(host='httpbin.org%20', port=80): Max retries exceeded with url: /delay/2 (Caused by NameResolutionError("HTTPConnection(host='httpbin.org%20', port=80): Failed to resolve 'httpbin.org%20' ([Errno 11001] getaddrinfo failed)"))
+2026-04-09 20:49:38 | INFO     | conftest             | api_session          | 全局Session关闭

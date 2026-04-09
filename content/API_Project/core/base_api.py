@@ -1,7 +1,9 @@
 # base_api.py
 import requests
+from pathlib import Path
 
-from config import get_config, get_base_url, log
+from config import  log
+from .get_settings import Config
 
 
 class BaseApi:
@@ -9,11 +11,16 @@ class BaseApi:
     HTTP 基础封装类
     职责：管理网络连接，不管业务逻辑
     """
-
+    
+    # config_file_path=str(Path(__file__).parent.parent / 'config' / 'env_settings.yaml')
     def __init__(self, session: requests.Session = None):
+        '''结合pytest_addoption 与pytest_configure(config)'''
         # 获取环境，然后实例化
-        self.base_url = get_base_url()
-        self.config = get_config()
+        # Config.FILE=BaseApi.config_file_path
+        # Config.ENV='production'
+        self.config=Config()
+        self.base_url = self.config.get_base_url()
+        self.config_data = self.config.get_config()
         # 配置环境是可以变化的，但是会话是贯穿始终，任何配置均是围绕会话进行的
         # 因此会话是初始化所需要的参数，来进行控制是否需要创建会话
         # 当根目录级别没有创建session就会自动使用or后面创建session确保成功
@@ -42,7 +49,7 @@ class BaseApi:
 
         # 设置超时（如果没有传值就用默认值）
         if "timeout" not in kwargs:
-            kwargs["timeout"] = self.config["timeout"]
+            kwargs["timeout"] = self.config_data["timeout"]
         log.debug(f"[HTTP] {method} {url}")
         # 技术层是debug 不是info
 

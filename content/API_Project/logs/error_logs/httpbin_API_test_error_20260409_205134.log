@@ -1,0 +1,1 @@
+2026-04-09 20:51:34 | ERROR    | base_api             | _request             | 请求异常HTTPConnectionPool(host='httpbin.org%20', port=80): Max retries exceeded with url: /ip (Caused by NameResolutionError("HTTPConnection(host='httpbin.org%20', port=80): Failed to resolve 'httpbin.org%20' ([Errno 11001] getaddrinfo failed)"))

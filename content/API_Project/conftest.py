@@ -1,11 +1,57 @@
 # conftest.py
-from config import get_config,  log
-import requests
+# 钩子函数需要放在fixture之前
+# 添加自定义参数
 import pytest
+def pytest_addoption(parser):
+    '''
+    添加命令行选项
+    运行实例：pytest --env=production --config-file=config/env_settings.yaml
+    '''
+    parser.addoption(
+        '--env',
+        action='store',
+        default='production',
+        help='测试环境：production/staging/development (默认: production)'
+    )
+    parser.addoption(
+        '--env-file',
+        action='store',
+        default=None,
+        help='配置文件路径，默认使用项目根目录下的 config/env_settings.yaml'
+    )
+    # 此钩子函数只用于增加命令行选项；对参数的具体修改需要其伙伴pytest_configure()
+from config import log
+from core import Config
+import requests
+import sys
+
+def pytest_configure(config):
+    '''
+    配置初始化Config类，将命令行参数值赋值给该类的类变量
+    注意：这个钩子函数会在所有测试收集前执行
+    '''
+    # 获取命令行参数值
+    env=config.getoption('--env')
+    config_file=config.getoption('--env-file')
+
+    # 处理默认配置文件路径
+    if config_file is None:
+        config_file = str(Path(__file__).parent / 'config' / 'env_settings.yaml')
+        import os
+        if not os.path.exists(config_file):
+            raise FileNotFoundError(f'该文件{config_file}不存在')
+        
+    Config.ENV = env
+    Config.FILE = config_file
+    
+    # 记录到日志（此时 log 应该已经被导入）
+    log.info(f"pytest_configure完成: 环境={Config.ENV}, 配置文件={Config.FILE}")
+
+
+
 from api import HttpbinAuthService, HttpbinCoreService
 from utils import common_exception
 from pathlib import Path
-import sys
 # 将 conftest.py 所在目录（即 API_Project）加入 Python 搜索路径
 conftest_dir = str(Path(__file__).parent)
 if conftest_dir not in sys.path:
@@ -15,6 +61,7 @@ if conftest_dir not in sys.path:
 # # 在根目录级别，初始化日志，后面就可以直接使用log
 # setup_logger()
 # 由于在logger.py中，已经调用setup_logger且使用时已经导入log，此处就不再需要setup_logger()
+
 
 
 @common_exception
@@ -61,7 +108,7 @@ def authenticated_core(api_session):
     不通用户拥有不同的临时权限
     '''
     service = HttpbinCoreService(api_session)
-    token = get_config()['default_token']
+    token = Config().get_config()['default_token']
     service.set_auth_token(token)
     log.info(f"测试函数获取已认证实例，Token: {token[:10]}...")
     return service

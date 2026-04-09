@@ -1,0 +1,17 @@
+# CONFIG:
+production:
+  base_url: "http://httpbin.org"
+  timeout: 5
+  long_timeout: 10
+  auth:
+    username: "admin"
+    password: "secret123"
+  default_token: "bootcamp_token_123456"
+mirror:
+  base_url: "http://httpbin.org"
+  timeout: 5
+  long_timeout: 10
+  auth:
+    username: "admin"
+    password: "secret123"
+  default_token: "bootcamp_token_123456"

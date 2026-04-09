@@ -1,7 +1,8 @@
 # httpbin_service.py
 from core import BaseApi
 from utils import type_parse
-from config import get_config, log
+from config  import log
+from core import Config
 
 
 class HttpbinCoreService(BaseApi):
@@ -47,7 +48,7 @@ class HttpbinCoreService(BaseApi):
         return self._request(
             method="GET",
             endpoint=f"/delay/{seconds}",
-            timeout=get_config()["long_timeout"],
+            timeout=Config().get_config()["long_timeout"],
         )
 
     def get_request_headers(self) -> dict:
@@ -63,7 +64,7 @@ class HttpbinAuthService(BaseApi):
     def __init__(self, session=None):
         super().__init__(session)
         # BaseApi().__init__(session)
-        self.credentials = get_config()["auth"]
+        self.credentials = Config().get_config()["auth"]
 
     def basic_auth_login(self) -> dict:
         """
