@@ -5,7 +5,7 @@ import pytest
 def pytest_addoption(parser):
     '''
     添加命令行选项
-    运行实例：pytest --env=production --config-file=config/env_settings.yaml
+    运行实例：pytest --env=production --env-file=config/env_settings.yaml
     '''
     parser.addoption(
         '--env',
@@ -61,6 +61,58 @@ if conftest_dir not in sys.path:
 # # 在根目录级别，初始化日志，后面就可以直接使用log
 # setup_logger()
 # 由于在logger.py中，已经调用setup_logger且使用时已经导入log，此处就不再需要setup_logger()
+
+# 测试失败处理
+@pytest.hookimpl(tryfirst=True,hookwrapper=True)
+# tryfist是确保当有多个pytest_runtest_makereport被调用时，确保当前函数是第一个调用
+# hookwrapper作用是确保在yield前后可以插入操作，而不是覆盖yield（测试函数）
+def pytest_runtest_makereport(item,call):
+    '''
+    item：是当前测试函数对象
+    call：是测试执行阶段
+    setup --> call --> teardown pytest_runtest_makereport是在这三个阶段均可以写入，且是yield前后
+    而pytest_runtest_protocol是setup和teardown前后，先执行pytest_runtest_makereport，后执行pytest_runtest_protocol
+    item.name 测试函数名字
+    item.module 测试所在模块
+    item.funcargs 测试函数接收的所有fixture参数
+    item.cls 如果有类，则是所在的类
+    '''
+    # 一般都是在每个阶段之后插入操作
+    outcome=yield
+    report=outcome.get_result()
+    '''
+    report是单个测试报告对象，拥有以下属性：
+    report.nodeid       测试id:"testcases/test_login.py::TestLogin::test_success"
+    report.outcome      结果状态：passed failed skipper error
+    report.location     文件路径和行号，如("testcases/test_login.py", 15, "test_success")
+    report.longrepr     失败是详细的错误信息（tracebask+异常信息）
+    report.duration     测试执行耗时
+    report.when         执行阶段：“setup” “call” “teardown”
+    report.sections     测试输出的分阶段信息（stdout stderr）
+    report.keywords     测试标记 如{"test_success", "TestLogin", "pytestmark"}
+    '''
+    if report.when == 'call':
+        # 确保是在测试函数执行阶段，而不是setup teardown阶段
+        if hasattr(item,'funcargs'):
+            # 防御性变成，确保测试对象，也即是测试函数，是有参数的
+            for fixture_name,fixture_value in item.funcargs.items():
+                # 识别 Service 类（假设都有 base_url 属性）
+                if hasattr(fixture_value,'base_url') and hasattr(fixture_value,'session'):
+                    context=(f'Fixture:{fixture_name}\n'
+                        f'Base URL:{fixture_value.base_url}\n'
+                        f'Session Headers:{dict(fixture_value.session.headers)}')
+                    import allure
+                    allure.attach(context,name=f'请求上下文 - {fixture_name}')
+                    # 不指定类型就是allure.attachment_type.TEXT
+        if report.outcome in ('failed', 'error'):
+            # 但不是passed情况下上传相关日志
+            log_dir=Path(__file__).parent / 'logs'
+            if log_dir.exists():
+                log_files=list(log_dir.glob("*.log"))
+                if log_files:
+                    # 按照修改时间排序
+                    latest_log=max(log_files,key=lambda x:x.stat().st_mtime)
+                    allure.attach.file(str(latest_log),name='测试执行日志',attachment_type=allure.attachment_type.TEXT)
 
 
 

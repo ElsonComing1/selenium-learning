@@ -1,0 +1,22 @@
+[
+    {
+        "case_id":"TC001",
+        "description":"创建普通用户",
+        "input":
+            {
+                "username":"user1",
+                "role":"developer"
+            },
+        "expected_role":"developer"
+    },
+    {
+        "case_id":"TC002",
+        "description":"创建管理员",
+        "input":
+            {
+                "username":"admin1",
+                "role":"manager"
+            },
+        "expected_role":"manager"
+    }
+]

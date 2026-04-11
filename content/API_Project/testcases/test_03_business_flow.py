@@ -1,9 +1,11 @@
 # test_03
 import pytest
 import allure
+from pathlib import Path
 import json
-from utils import type_parse
+from utils import type_parse,Json_tool
 from api import HttpbinAuthService, HttpbinCoreService
+from config import common_varaints as CV
 
 @allure.epic("API自动化")
 @allure.feature('核心业务流')
@@ -90,3 +92,35 @@ def test_delete_operation(authenticated_core):
         assert result.get("data") == ""  # DELETE请求的body为空
     with allure.step("step4: 验证URL正确"):
         assert result.get("url") == "http://httpbin.org/delete"
+
+
+def get_data():
+    data_file=str(CV.TEST_CASES_FILE)
+    json_item=Json_tool()
+    return json_item.read_json_file(data_file)
+
+@allure.epic("API自动化")
+@allure.feature('核心业务流')
+@allure.story('上传不同用户数据')
+@allure.severity(allure.severity_level.NORMAL)
+@allure.tag('data_driver','positive')
+@pytest.mark.data_driver
+@pytest.mark.positive
+@pytest.mark.flaky(reruns=2,reruns_delay=2,only_rerun=AssertionError)
+# 该处指定会覆盖终端命令行指令
+# 指定测试函数且指定条件下，总共执行3次，两次重试，失败后会缓2秒；或者终端指令--reruns 2 --reruns-delay 2 --only-rerun requests.Timeout
+@pytest.mark.parametrize('case',get_data(),ids=lambda x:x['case_id'])
+# ids=lambda x:x['case_id']是将名字列入id中，显示出来，便于维护
+def test_create_users_with_data(authenticated_core,case):
+    # parametrize会自动将多个实例拆解成单个case
+    allure.dynamic.title(f'{case["case_id"]}: {case["description"]}')
+    allure.dynamic.description(f"输入参数: {Json_tool().translate_to_json(case['input'])}")
+    with allure.step(f'step1：提交用户信息{Json_tool().translate_to_json(case["input"])}'):
+        result = authenticated_core.submit_data(case["input"])
+    
+    with allure.step("step2：验证返回数据是否与提交数据一致"):
+        # 断言失败时，Allure 会显示：TC001: 创建普通用户
+        assert result["json"]["role"] == case["expected_role"]
+
+# allure generate .\report -o .\report --clean 
+# allure open .\allure-report

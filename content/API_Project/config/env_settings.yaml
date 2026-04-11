@@ -1,4 +1,5 @@
 # CONFIG:
+# :后面的值必须与冒号保持至少一个空格；关键字是变量，用缩进来表示关系
 production:
   base_url: "http://httpbin.org"
   timeout: 5

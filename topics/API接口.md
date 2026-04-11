@@ -552,47 +552,25 @@ if __name__=="__main__":
 
 ###### 2. 环境配置
 
-```python
-"""
-环境配置中心
-httpbin.org 在国内有镜像，如果官方慢可切换
-"""
-from utils import common_exception
-
-ENV = "production"  # 可以改一个文件的一个变量，切换不同环境
-
-CONFIG = {
-    'production':{
-        'base_url':'http://httpbin.org',
-        'timeout':5,
-        'long_timeout':10,
-        'auth':{
-            'username':'admin',
-            'password':'secret123'
-        },
-        'default_token':'bootcamp_token_123456'
-    },
-    'mirror':{
-        'base_url':'http://httpbin.org',    # 国内镜像但地址一样
-        'timeout':5,
-        'long_timeout':10,
-        'auth':{
-            'username':'admin',
-            'password':'secret123'
-        },
-        'default_tokne':'bootcamp_token_123456'
-    }
-
-}
-
-@common_exception
-def get_config():
-    return CONFIG.get(ENV)
-
-
-@common_exception
-def get_base_url():
-    return get_config()['base_url']
+```yaml
+# CONFIG:
+# :后面的值必须与冒号保持至少一个空格；关键字是变量，用缩进来表示关系
+production:
+  base_url: "http://httpbin.org"
+  timeout: 5
+  long_timeout: 10
+  auth:
+    username: "admin"
+    password: "secret123"
+  default_token: "bootcamp_token_123456"
+mirror:
+  base_url: "http://httpbin.org"
+  timeout: 5
+  long_timeout: 10
+  auth:
+    username: "admin"
+    password: "secret123"
+  default_token: "bootcamp_token_123456"
 ```
 
 ###### 3. 日志器配置
@@ -659,59 +637,7 @@ def steup_logger():
 
 ```
 
-###### 4. 通用异常装饰器
-
-```python
-import functools
-import inspect
-from typing import Dict,Any,Type
-
-def common_exception(func_main):
-    @functools.wraps(func_main)
-    def wrapper(*args,**kwargs):
-        try:
-            return func_main(*args,**kwargs)
-        except Exception as e:
-            # e 就是错误的内容
-            raise e
-
-    return wrapper
-
-def type_parse(**type_map:Type):
-    '''
-    多参数类型检查器
-    用法：
-    @type_parse(id=int,name=str,price=float)
-    def process(id, name, price):
-        pass
-    '''
-    def decorate(func):
-        sig=inspect.signature(func)
-        param_names=list(sig.parameters.keys())
-        # 回去被装饰函数的参数名称，构成一个列表
-        @functools.wraps(func)
-        def wrapper(*args,**kwargs):
-            bound_kwargs=sig.bind(*args,**kwargs)
-            # 将参数名称与参数值对应构成字典，但是有默认值的参数，且没有传递值，就需要使用apply_defaults进行使用默认值
-            bound_kwargs.apply_defaults()
-            # 没有默认值的形参是必传参数
-            for param_name, expected_type in bound_kwargs.items():
-                if param_name not in param_names:
-                    raise TypeError(f'参数{param_name}不存在函数签名中')
-                value=bound_kwargs.arguments[param_name]
-                # 检查类型（允许 None 跳过，除非类型是 type(None)）
-                if value is not None and not isinstance(value, expected_type):
-                    raise TypeError(
-                        f"参数 '{param_name}' 类型错误: "
-                        f"期望 {expected_type.__name__}, "
-                        f"实际得到 {type(value).__name__} (值: {value!r})"
-                    )
-            return func(*args,**kwargs)
-        return wrapper
-    return decorate
-```
-
-###### 5. 基础层（技术层）
+###### 4. 基础层（技术层）
 
 ```python
 import requests
@@ -840,7 +766,7 @@ class BaseApi:
 | **`proxies`** | `dict`              | 代理设置                           | `session.proxies = {'http': 'http://127.0.0.1:8080'}`        |
 | **`timeout`** | `float/tuple`       | 默认超时时间                       | 注意：Session 没有直接的 timeout 属性，需通过 `request` 方法或自定义 Adapter |
 
-###### 6. 业务层
+###### 5. 业务层
 
 ```python
 from api import BaseApi
@@ -939,17 +865,126 @@ class HttpbinAuthService(BaseApi):
 '''
 ```
 
-###### 7. 根目录`conftest.py`
+###### 6. 根目录`conftest.py`
 
 ```python
+# conftest.py
+# 钩子函数需要放在fixture之前
+# 添加自定义参数
 import pytest
-from api import HttpbinAuthService,HttpbinCoreService
-from utils import setup_logger,common_exception,log
-from config import get_config
+def pytest_addoption(parser):
+    '''
+    添加命令行选项
+    运行实例：pytest --env=production --env-file=config/env_settings.yaml
+    '''
+    parser.addoption(
+        '--env',
+        action='store',
+        default='production',
+        help='测试环境：production/staging/development (默认: production)'
+    )
+    parser.addoption(
+        '--env-file',
+        action='store',
+        default=None,
+        help='配置文件路径，默认使用项目根目录下的 config/env_settings.yaml'
+    )
+    # 此钩子函数只用于增加命令行选项；对参数的具体修改需要其伙伴pytest_configure()
+from config import log
+from core import Config
+import requests
+import sys
+
+def pytest_configure(config):
+    '''
+    配置初始化Config类，将命令行参数值赋值给该类的类变量
+    注意：这个钩子函数会在所有测试收集前执行
+    '''
+    # 获取命令行参数值
+    env=config.getoption('--env')
+    config_file=config.getoption('--env-file')
+
+    # 处理默认配置文件路径
+    if config_file is None:
+        config_file = str(Path(__file__).parent / 'config' / 'env_settings.yaml')
+        import os
+        if not os.path.exists(config_file):
+            raise FileNotFoundError(f'该文件{config_file}不存在')
+        
+    Config.ENV = env
+    Config.FILE = config_file
+    
+    # 记录到日志（此时 log 应该已经被导入）
+    log.info(f"pytest_configure完成: 环境={Config.ENV}, 配置文件={Config.FILE}")
 
 
-# 在根目录级别，初始化日志，后面就可以直接使用log
-setup_logger()
+
+from api import HttpbinAuthService, HttpbinCoreService
+from utils import common_exception
+from pathlib import Path
+# 将 conftest.py 所在目录（即 API_Project）加入 Python 搜索路径
+conftest_dir = str(Path(__file__).parent)
+if conftest_dir not in sys.path:
+    sys.path.insert(0, conftest_dir)
+
+
+# # 在根目录级别，初始化日志，后面就可以直接使用log
+# setup_logger()
+# 由于在logger.py中，已经调用setup_logger且使用时已经导入log，此处就不再需要setup_logger()
+
+# 测试失败处理
+@pytest.hookimpl(tryfirst=True,hookwrapper=True)
+# tryfist是确保当有多个pytest_runtest_makereport被调用时，确保当前函数是第一个调用
+# hookwrapper作用是确保在yield前后可以插入操作，而不是覆盖yield（测试函数）
+def pytest_runtest_makereport(item,call):
+    '''
+    item：是当前测试函数对象
+    call：是测试执行阶段
+    setup --> call --> teardown pytest_runtest_makereport是在这三个阶段均可以写入，且是yield前后
+    而pytest_runtest_protocol是setup和teardown前后，先执行pytest_runtest_makereport，后执行pytest_runtest_protocol
+    item.name 测试函数名字
+    item.module 测试所在模块
+    item.funcargs 测试函数接收的所有fixture参数
+    item.cls 如果有类，则是所在的类
+    '''
+    # 一般都是在每个阶段之后插入操作
+    outcome=yield
+    report=outcome.get_result()
+    '''
+    report是单个测试报告对象，拥有以下属性：
+    report.nodeid       测试id:"testcases/test_login.py::TestLogin::test_success"
+    report.outcome      结果状态：passed failed skipper error
+    report.location     文件路径和行号，如("testcases/test_login.py", 15, "test_success")
+    report.longrepr     失败是详细的错误信息（tracebask+异常信息）
+    report.duration     测试执行耗时
+    report.when         执行阶段：“setup” “call” “teardown”
+    report.sections     测试输出的分阶段信息（stdout stderr）
+    report.keywords     测试标记 如{"test_success", "TestLogin", "pytestmark"}
+    '''
+    if report.when == 'call':
+        # 确保是在测试函数执行阶段，而不是setup teardown阶段
+        if hasattr(item,'funcargs'):
+            # 防御性变成，确保测试对象，也即是测试函数，是有参数的
+            for fixture_name,fixture_value in item.funcargs.items():
+                # 识别 Service 类（假设都有 base_url 属性）
+                if hasattr(fixture_value,'base_url') and hasattr(fixture_value,'session'):
+                    context=(f'Fixture:{fixture_name}\n'
+                        f'Base URL:{fixture_value.base_url}\n'
+                        f'Session Headers:{dict(fixture_value.session.headers)}')
+                    import allure
+                    allure.attach(context,name=f'请求上下文 - {fixture_name}')
+                    # 不指定类型就是allure.attachment_type.TEXT
+        if report.outcome in ('failed', 'error'):
+            # 但不是passed情况下上传相关日志
+            log_dir=Path(__file__).parent / 'logs'
+            if log_dir.exists():
+                log_files=list(log_dir.glob("*.log"))
+                if log_files:
+                    # 按照修改时间排序
+                    latest_log=max(log_files,key=lambda x:x.stat().st_mtime)
+                    allure.attach.file(str(latest_log),name='测试执行日志',attachment_type=allure.attachment_type.TEXT)
+
+
 
 @common_exception
 @pytest.fixture(scope='session')
@@ -959,29 +994,34 @@ def api_session():
         整个测试会话期间复用tcp连接，省去多次建立TCP连接环节
     '''
     log.info('创建全局Session...')
-    session=requests.Session()
+    session = requests.Session()
+    # 该会话被提出来是为了，更好的公用会话
     yield session
     session.close()
     log.info('全局Session关闭')
     # 一个session可以有多个服务，似一个浏览器对个标签
+
 
 @pytest.fixture(scope='session')
 def core_service(api_session):
     '''
     使用同一个会话，来实现不同服务，当前是业务服务
     '''
-    service=HttpbinCoreService(api_session)
+    service = HttpbinCoreService(api_session)
     # 实例化对象业务类，使用父类BaseApi构造
+    # 夹具可以供夹具使用；只有被调用时才会创建
     return service
+
 
 @pytest.fixture(scope='session')
 def auth_service(api_session):
     '''
     使用同一个session,创建不同服务，当前是认证服务
     '''
-    service=HttpbinAuthService(api_session)
+    service = HttpbinAuthService(api_session)
     # 实例化认证类，通过基类BaseApi构造
     return service
+
 
 @pytest.fixture(scope='function')
 def authenticated_core(api_session):
@@ -989,11 +1029,23 @@ def authenticated_core(api_session):
     已认证的core服务（每个测试函数独立，避免Token污染）
     不通用户拥有不同的临时权限
     '''
-    service=HttpbinCoreService(api_session)
-    token=get_config()['default_token']
+    service = HttpbinCoreService(api_session)
+    token = Config().get_config()['default_token']
     service.set_auth_token(token)
     log.info(f"测试函数获取已认证实例，Token: {token[:10]}...")
     return service
+
+
+@pytest.hookimpl(hookwrapper=True)
+# 声明这是一个包装器钩子，通过yield在测试前后插入逻辑
+# hookwrapper=True就是让该函数在yield前后操作是包裹，而不是覆盖。
+def pytest_runtest_protocol(item, nextitem):
+    """每个测试用例执行后自动换行"""
+    # 也可以在测试执行前，插入操作
+    yield       # 测试实际执行位置
+    print()  # 在测试结束后输出空行
+
+
 '''
 Session 复用：省 TCP 连接（性能）
 Service 分离：业务逻辑解耦（可维护）
@@ -1011,9 +1063,280 @@ authenticated_core 隔离：认证状态不串扰（稳定性）
 
    不同Token代表着不通权限
 
-###### 8. 测试层
+###### 7. 测试层
 
-###### 9. pytest钩子函数执行逻辑
+1. `test_01_connectivity.py`
+
+   ```python
+   # test_01
+   import pytest
+   import allure
+   from utils import type_parse
+   from api import HttpbinAuthService, HttpbinCoreService
+   
+   
+   @allure.epic("API自动化")
+   @allure.feature("网络连接测试")
+   @allure.story("基础连通性检查")
+   @allure.severity(allure.severity_level.BLOCKER)
+   @allure.title("连通目的ip")
+   @allure.description(
+       "用文字描述当前函数所做的事：通过endpoint=/ip和http协议+域名，构成url，访问url，同时获得返回内容，来验证访问成功"
+   )
+   @allure.step("基础连通性检查")
+   @allure.tag("network", "smoke", "负责人：张三")
+   @pytest.mark.network
+   @pytest.mark.smoke
+   # 通过pytest来设置模块，为了控制模块级运行
+   @type_parse(core_service=HttpbinCoreService)
+   def test_network_connectivity(core_service):
+       with allure.step("step1：调用HttpbinCoreService类里的get_ip服务"):
+           result = core_service.get_ip()
+       with allure.step("step2：判断得到的返回值是否正确，依次来证明是连通的"):
+           assert "origin" in result
+           assert len(result["origin"].split(".")) == 4
+           allure.attach(result["origin"], "当前出口IP", allure.attachment_type.TEXT)
+           print(f"\n当前IP: {result['origin']}")
+   
+   
+   @allure.epic("API自动化")  # 项目 文件夹  可以重复
+   @allure.feature("网络连接测试")  # 功能模块  文件夹 可以重复
+   # 统一模块下，因此同名便于管理
+   @allure.story("基础连通性检查")  # 具体业务场景  文件夹  可以重复
+   @allure.severity(allure.severity_level.CRITICAL)
+   @allure.title("延迟测试")  # 具体功能      文件
+   @allure.description("延迟测试：在规定时间后才能响应")
+   @allure.tag("network", "slow", "负责人：张三")
+   @pytest.mark.network
+   @pytest.mark.slow
+   @type_parse(core_service=HttpbinCoreService)
+   def test_delay_endpoint(core_service):
+       """测试延迟接口"""
+       with allure.step("step1：导入时间库"):
+           import time
+   
+       with allure.step("step2：开始运行时间"):
+           # 使用时导入，运行更快
+           start = time.time()
+       with allure.step("step3：开始调用"):
+           result = core_service.test_delay(2)
+       # 延迟2秒
+       with allure.step("step4：测试耗时"):
+           elapsed = time.time() - start
+       with allure.step("step5：判断耗时是否在规定时间之后才响应"):
+           assert elapsed >= 2.0
+       with allure.step(f"step6：验证是否真的访问到目的ip:{result.get('origin',None)}"):
+           # 确保真的延迟
+           assert "origin" in result
+           # 延迟接口也会返回ip
+   
+   
+   """
+   将项目的父目录插入其中，为了能够找到对应模块
+   """
+   
+   ```
+
+2. `test_02_authentication.py`
+
+   ```python
+   # test_02
+   import pytest
+   import allure
+   from utils import type_parse
+   from api import HttpbinAuthService, HttpbinCoreService
+   
+   @allure.epic("API自动化")
+   @allure.feature('认证授权模块')
+   @allure.story('Bearer Token认证')
+   @allure.severity(allure.severity_level.CRITICAL)
+   @allure.title('验证token正确传递服务器')
+   @allure.description("""
+   测试场景：验证通过set_auth_token设置的Token能否通过HTTP Headers正确传递到服务端
+   预期结果：
+   1. 请求头中包含Authorization字段
+   2. 字段值为Bearer + 传入的token
+   """)
+   @allure.tag('auth', 'security', '负责人：李四')
+   @pytest.mark.auth
+   @pytest.mark.security
+   @type_parse(auth_service=HttpbinAuthService)
+   def test_bearer_token_propagation(auth_service):
+       '''
+       测试Token是否被正确传递到服务器
+       '''
+       with allure.step('step1：可以获取动态token,当前是静态，实现不同token拥有不同的权限'):
+           token = 'test-token-12345-abcde'
+       with allure.step('开始传递token'):
+           # token是英文或者数字
+           result = auth_service.bearer_auth_check(token)
+           # bearer_auth_check该方法其实就是更改发送的headers中Authorization的值
+       with allure.step('step2：检查验证传递是否成功'):
+           # 通过返回值来验证是否收到传递的token
+           headers = result['headers']
+           # result的返回值，在headers中的accept已经定义application/json
+       with allure.step('step3：通过检查传递值，与返回值之间进行判断，是否一致'):
+           assert 'Authorization' in headers
+           assert headers['Authorization'] == f'Bearer {token}'
+           # 这两个assert用于判断结果
+   
+   @allure.epic("API自动化")
+   @allure.feature('认证授权模块')
+   @allure.story('Basic Auth认证')
+   @allure.severity(allure.severity_level.CRITICAL)
+   @allure.title('验证基础认证流程')
+   @allure.description('用户认证')
+   @allure.link("https://httpbin.org/#/Auth/get_basic_auth__user___passwd_ ",
+                name="HttpBin Basic Auth文档")
+   @allure.tag('auth', 'security', '负责人：李四')
+   @pytest.mark.auth
+   @pytest.mark.security
+   @type_parse(auth_service=HttpbinAuthService)
+   def test_basic_authentication(auth_service):
+       '''
+       测试基础认证
+       行为+验证
+       '''
+       with allure.step('step1：开始基础认证'):
+           result = result = auth_service.basic_auth_login()
+           # 只是为了验证是否具有用户认证能力，下次可以改为数据驱动方式的认证
+       with allure.step('step2：验证基础认证'):
+           assert result['authenticated'] is True
+           assert result['user'] == 'admin'
+   ```
+
+3. `test_03_business_flow.py`
+
+   ```python
+   # test_03
+   import pytest
+   import allure
+   from pathlib import Path
+   import json
+   from utils import type_parse,Json_tool
+   from api import HttpbinAuthService, HttpbinCoreService
+   from config import common_varaints as CV
+   
+   @allure.epic("API自动化")
+   @allure.feature('核心业务流')
+   @allure.story('数据提交流程')
+   @allure.severity(allure.severity_level.BLOCKER)
+   @allure.title('业务数据提交测试')
+   @allure.description('通过核心方法提交数据')
+   @allure.tag('smoke', 'business', 'positive', '负责人：小三')
+   @pytest.mark.business
+   @pytest.mark.smoke
+   @type_parse(authenticated_core=HttpbinCoreService)
+   def test_submit_business_data(authenticated_core):
+       """
+       测试提交业务数据（POST）
+       使用已认证的fixture
+       """
+       with allure.step('step1: 导入时间模块'):
+           import time
+   
+           business_data = {
+               "username": "bootcamp_trainee",
+               "role": "qa_engineer",
+               "time_stamp": time.strftime("%Y-%m-%d"),
+           }
+       with allure.step("step2: 构造业务数据"):
+           allure.attach(json.dumps(business_data, indent=2,
+                         ensure_ascii=False), "请求数据", allure.attachment_type.JSON)
+       with allure.step("step3: 发送POST请求"):
+           result = authenticated_core.submit_data(business_data)
+       with allure.step("step4: 验证数据回显正确"):
+           # httpbin会回显提交的数据，为了验证是否提交成功
+           assert result["json"] == business_data
+           allure.attach(json.dumps(
+               result["json"], indent=2, ensure_ascii=False), '回显数据', allure.attachment_type.JSON)
+       with allure.step("step5: 验证请求URL"):
+           assert result["url"] == "http://httpbin.org/post"
+   
+   @allure.epic("API自动化")
+   @allure.feature('核心业务流')
+   @allure.story('数据更新流程')
+   @allure.severity(allure.severity_level.CRITICAL)
+   @allure.title('全量更新接口测试')
+   @allure.description('通过核心方法提交数据')
+   @allure.tag('business', 'regression', '负责人：小三')
+   @pytest.mark.business
+   @pytest.mark.regression
+   @type_parse(authenticated_core=HttpbinCoreService)
+   def test_update_data_flow(authenticated_core):
+       """
+       测试更新流程（PUT）
+       """
+       update_data = {"user_id": 123, "status": "active", "level": 2}
+       with allure.step("step1: 准备更新数据"):
+           allure.attach(json.dumps(update_data, indent=2,
+                         ensure_ascii=False), '更新内容', allure.attachment_type.JSON)
+       with allure.step("step2: 执行PUT请求"):
+           result = authenticated_core.update_data(update_data)
+       with allure.step("step3: 验证level字段更新成功"):
+           assert result["json"]["level"] == 2
+       with allure.step("step4: 验证status字段更新成功"):
+           assert result["json"]["status"] == "active"
+   
+   @allure.epic("API自动化")
+   @allure.feature('核心业务流')
+   @allure.story('数据删除流程')
+   @allure.severity(allure.severity_level.CRITICAL)
+   @allure.title('资源删除接口测试')
+   @allure.description('验证DELETE请求能正确执行，并返回空data字段')
+   @allure.tag('business', 'regression', '负责人：小三')
+   @pytest.mark.business
+   @pytest.mark.regression
+   @type_parse(authenticated_core=HttpbinCoreService)
+   def test_delete_operation(authenticated_core):
+       """
+       测试删除（DELETE）
+       """
+       with allure.step("step1: 调用删除接口"):
+           result = authenticated_core.delete_resource()
+           allure.attach(json.dumps(result, indent=2, ensure_ascii=False),
+                         '更新内容', allure.attachment_type.JSON)
+       with allure.step("step2: 验证响应类型为字典"):
+           assert isinstance(result, dict)
+       with allure.step("step3: 验证data字段为空（DELETE无body）"):
+           assert result.get("data") == ""  # DELETE请求的body为空
+       with allure.step("step4: 验证URL正确"):
+           assert result.get("url") == "http://httpbin.org/delete"
+   
+   
+   def get_data():
+       data_file=str(CV.TEST_CASES_FILE)
+       json_item=Json_tool()
+       return json_item.read_json_file(data_file)
+   
+   @allure.epic("API自动化")
+   @allure.feature('核心业务流')
+   @allure.story('上传不同用户数据')
+   @allure.severity(allure.severity_level.NORMAL)
+   @allure.tag('data_driver','positive')
+   @pytest.mark.data_driver
+   @pytest.mark.positive
+   @pytest.mark.flaky(reruns=2,reruns_delay=2,only_rerun=AssertionError)
+   # 该处指定会覆盖终端命令行指令
+   # 指定测试函数且指定条件下，总共执行3次，两次重试，失败后会缓2秒；或者终端指令--reruns 2 --reruns-delay 2 --only-rerun requests.Timeout
+   @pytest.mark.parametrize('case',get_data(),ids=lambda x:x['case_id'])
+   # ids=lambda x:x['case_id']是将名字列入id中，显示出来，便于维护
+   def test_create_users_with_data(authenticated_core,case):
+       # parametrize会自动将多个实例拆解成单个case
+       allure.dynamic.title(f'{case["case_id"]}: {case["description"]}')
+       allure.dynamic.description(f"输入参数: {Json_tool().translate_to_json(case['input'])}")
+       with allure.step(f'step1：提交用户信息{Json_tool().translate_to_json(case["input"])}'):
+           result = authenticated_core.submit_data(case["input"])
+       
+       with allure.step("step2：验证返回数据是否与提交数据一致"):
+           # 断言失败时，Allure 会显示：TC001: 创建普通用户
+           assert result["json"]["role"] == case["expected_role"]
+   
+   # allure generate .\report -o .\report --clean 
+   # allure open .\allure-report
+   ```
+
+###### 8. pytest钩子函数执行逻辑
 
 | 钩子函数                                             | 作用域       | 执行次数                                                | 执行时机                        | 核心用途                                           |
 | :--------------------------------------------------- | ------------ | ------------------------------------------------------- | ------------------------------- | -------------------------------------------------- |
@@ -1099,7 +1422,7 @@ authenticated_core 隔离：认证状态不串扰（稳定性）
    - 配置类操作 → `pytest_configure`
    - 资源初始化（如创建 Session）→ `pytest_sessionstart`
 
-###### 10. 钩子函数常用组合模版
+###### 9. 钩子函数常用组合模版
 
 1. 命令行传参 + 环境配置
 
@@ -1127,7 +1450,7 @@ authenticated_core 隔离：认证状态不串扰（稳定性）
 
    
 
-2. 用力自动打标签
+2. 用例自动打标签
 
    ```python
    def pytest_collection_modifyitems(config, items):
@@ -1155,4 +1478,247 @@ authenticated_core 隔离：认证状态不串扰（稳定性）
      sessionfinish（资源不释放，运维来找你）
    ```
 
+###### 10. 工具类
+
+1. `json_tool.py`
+
+   ```python
+   import json
+   from pathlib import Path
+   class Json_tool(object):
+       def read_json_file(self, file):
+           if not Path(file).exists():
+               raise
+           with open(file, 'r', encoding='utf-8') as f:
+               data = json.load(f)
+               return data
    
+       def write_json_file(self, file, data):
+           if not Path(file).exists():
+               raise
+           with open(file, 'w', encoding='utf-8') as f:
+               json.dump(data, f, indent=2, ensure_ascii=False)
+   
+       def append_data_to_json_file(self, file, data):
+           if not Path(file).exists():
+               raise
+           with open(file, 'w+', encoding='utf-8') as f:
+               json.dump(data, f, indent=2, ensure_ascii=False)
+   
+       def translate_to_dict(self, data):
+           return json.loads(data)
+   
+       def translate_to_json(self, data):
+           return json.dumps(data, indent=2, ensure_ascii=False)
+   ```
+
+2. `yaml_tool.py`
+
+   ```python
+   # yaml_tool.py
+   import yaml
+   
+   class Yaml_tool(object):
+       def read_yaml_file(self,file):
+           with open(file, 'r', encoding='utf-8') as f:
+               data = yaml.safe_load(f)
+               return data
+               # print(data)
+   
+       def write_yaml_file(self,data, file):
+           with open(file, 'w', encoding='utf-8') as f:
+               yaml.safe_dump(data, f, allow_unicode=True,
+                           default_flow_style=False,
+                           sort_keys=False)
+   ```
+
+3. `exceptionTools.py`
+
+   ```python
+   #exceptionTools.py
+   import functools
+   import inspect
+   from typing import Dict,Any,Type
+   
+   def common_exception(func_main):
+       @functools.wraps(func_main)
+       def wrapper(*args,**kwargs):
+           try:
+               return func_main(*args,**kwargs)
+           except Exception as e:
+               # e 就是错误的内容
+               raise e
+   
+       return wrapper
+   
+   def type_parse(**type_map:Type):
+       '''
+       多参数类型检查器
+       用法：
+       @type_parse(id=int,name=str,price=float)
+       def process(id, name, price):
+           pass
+       '''
+       def decorate(func):
+           sig=inspect.signature(func)
+           param_names=list(sig.parameters.keys())
+           # 回去被装饰函数的参数名称，构成一个列表
+           @functools.wraps(func)
+           def wrapper(*args,**kwargs):
+               bound_kwargs=sig.bind(*args,**kwargs)
+               # 将参数名称与参数值对应构成字典，但是有默认值的参数，且没有传递值，就需要使用apply_defaults进行使用默认值
+               bound_kwargs.apply_defaults()
+               # 没有默认值的形参是必传参数
+               for param_name, expected_type in type_map.items():
+                   if param_name not in param_names:
+                       raise TypeError(f'参数{param_name}不存在函数签名中')
+                   value=bound_kwargs.arguments[param_name]
+                   # 检查类型（允许 None 跳过，除非类型是 type(None)）
+                   if value is not None and not isinstance(value, expected_type):
+                       raise TypeError(
+                           f"参数 '{param_name}' 类型错误: "
+                           f"期望 {expected_type.__name__}, "
+                           f"实际得到 {type(value).__name__} (值: {value!r})"
+                       )
+               return func(*args,**kwargs)
+           return wrapper
+       return decorate
+   ```
+
+###### 11. 终端执行指令
+
+```bash
+# 执行指令
+cd project
+pytest -s -v --env=production --env-file=.\config\env_settings.yaml --alluredir=.\report --clean-alluredir .\testcases\
+
+# 动态报告
+allure serve .\report\
+
+# 静态报告
+allure generate .\report -o .\allure-report --clean
+allure open .\allure-report
+```
+
+#### 3. 数据库一致性
+
+##### 1. Mysql学习
+
+###### 1. 数据库：
+
+1. 进入数据库
+
+   ```mysql
+   mysql -u root -p
+   ```
+
+2. 显示数据库
+
+   ```
+   show databases;
+   ```
+
+3. 创建数据库
+
+   ```mysql
+   create database test_api_db character set utf8mb4 collate utf8mb4_unicode_ci;
+   ```
+
+4. 删除数据库
+
+   ```mysql
+   drop database test_api_db;
+   ```
+
+5. 选择数据库
+
+   ```mysql
+   use test_api_db;
+   ```
+
+6. 不推荐更改名字
+
+###### 2. 表：
+
+1. 显示表
+
+   ```mysql
+   show tables;
+   ```
+
+2. 创建表
+
+   ```mysql
+   CREATE TABLE if not exists departments (
+       id INT AUTO_INCREMENT PRIMARY KEY COMMENT '部门ID',
+       name VARCHAR(50) NOT NULL COMMENT '部门名称',
+       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   ) ENGINE=InnoDB COMMENT='部门表';
+   
+   -- 3. 子表：员工表（带外键）
+   CREATE TABLE employees (
+       id INT AUTO_INCREMENT PRIMARY KEY COMMENT '员工ID',
+       name VARCHAR(50) NOT NULL COMMENT '姓名',
+       department_id INT COMMENT '所属部门ID',
+       salary DECIMAL(10,2) COMMENT '工资',
+       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+       
+       -- 外键约束：部门删除时，所属员工自动删除（也可设为 SET NULL 保留员工）
+   	CONSTRAINT fk_emp_dept
+       FOREIGN KEY (department_id)
+       REFERENCES departments(id)
+       ON DELETE CASCADE
+       ON UPDATE CASCADE
+   ) ENGINE=InnoDB COMMENT='员工表';
+   ```
+
+3. 删除表
+
+   ```
+   drop table employees;
+   ```
+
+4. 更改表
+
+   ```mysql
+   alter table old_name RENAME TO new_name CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   ```
+
+###### 3. 数据：
+
+ 1. 增加数据
+
+    ```mysql
+    --增加单条数据
+    insert into employees values ('技术部');
+    --增加多数据
+    insert into employees(name, department_id, salary)
+    values
+    ('张三', 1, 15000.00),   -- 技术部
+    ('李四', 1, 12000.00),   -- 技术部
+    ('王五', 2, 8000.00);    -- 销售部
+    ```
+
+ 2. 删除数据
+
+    ```mysql
+    delete from employees where id=1;
+    ```
+
+ 3. 改数据
+
+    ```mysql
+    update employees set name='Elson' where id=2;
+    ```
+
+ 4. 查数据
+
+    ```mysql
+    select * from employees;
+    ```
+
+##### 2. pymysql学习
+
+###### 1. 连接数据库
+
+###### 2. 

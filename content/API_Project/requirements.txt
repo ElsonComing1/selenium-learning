@@ -3,3 +3,4 @@ loguru==0.7.3
 pytest==7.4.3
 allure-pytest==2.13.2
 pytest-rerunfailures==13.0
+pymysql==1.1.2
