@@ -12,6 +12,6 @@ Thumbs.db
 *.swo
 *~
 
-allure-results/
-report/
-config/
+allure-results\*
+report\*
+content\API_Project\config\.env
