@@ -1535,44 +1535,50 @@ authenticated_core 隔离：认证状态不串扰（稳定性）
 3. `exceptionTools.py`
 
    ```python
-   #exceptionTools.py
+   # exceptionTools.py
    import functools
    import inspect
-   from typing import Dict,Any,Type
+   from typing import Dict, Any, Type
+   
    
    def common_exception(func_main):
        @functools.wraps(func_main)
-       def wrapper(*args,**kwargs):
+       def wrapper(*args, **kwargs):
            try:
-               return func_main(*args,**kwargs)
+               return func_main(*args, **kwargs)
            except Exception as e:
                # e 就是错误的内容
                raise e
    
        return wrapper
    
-   def type_parse(**type_map:Type):
-       '''
+   
+   def type_parse(**type_map: Type):
+       """
        多参数类型检查器
        用法：
        @type_parse(id=int,name=str,price=float)
        def process(id, name, price):
            pass
-       '''
+       """
+   
        def decorate(func):
-           sig=inspect.signature(func)
-           param_names=list(sig.parameters.keys())
+           sig = inspect.signature(func)
+           # 记录参数
+           param_names = list(sig.parameters.keys())
+           # 把参数做成列表
+   
            # 回去被装饰函数的参数名称，构成一个列表
            @functools.wraps(func)
-           def wrapper(*args,**kwargs):
-               bound_kwargs=sig.bind(*args,**kwargs)
+           def wrapper(*args, **kwargs):
+               bound_kwargs = sig.bind(*args, **kwargs)
                # 将参数名称与参数值对应构成字典，但是有默认值的参数，且没有传递值，就需要使用apply_defaults进行使用默认值
                bound_kwargs.apply_defaults()
                # 没有默认值的形参是必传参数
                for param_name, expected_type in type_map.items():
                    if param_name not in param_names:
-                       raise TypeError(f'参数{param_name}不存在函数签名中')
-                   value=bound_kwargs.arguments[param_name]
+                       raise TypeError(f"参数{param_name}不存在函数签名中")
+                   value = bound_kwargs.arguments[param_name]
                    # 检查类型（允许 None 跳过，除非类型是 type(None)）
                    if value is not None and not isinstance(value, expected_type):
                        raise TypeError(
@@ -1580,9 +1586,60 @@ authenticated_core 隔离：认证状态不串扰（稳定性）
                            f"期望 {expected_type.__name__}, "
                            f"实际得到 {type(value).__name__} (值: {value!r})"
                        )
-               return func(*args,**kwargs)
+               return func(*args, **kwargs)
+   
            return wrapper
+   
        return decorate
+   
+   
+   def mysql_args_parse(func):
+       @functools.wraps(func)
+       def wrapper(*args,**kwargs):
+           try:
+               fun_name=func.__name__
+               self=args[0]
+               # 绑定参数自动处理位置参数和关键字参数
+               sig=inspect.signature(func)
+               bound=sig.bind(*args,**kwargs)
+               bound.apply_defaults()  # 应用默认值
+   
+               # 获取参数值（无论怎么传递）
+               argsments=bound.arguments
+               table=argsments.get('table')
+               columns=argsments.get('columns')
+               enabled_commit=kwargs.get('enabled_commit',False)
+   
+               # 进行过滤
+               if not table or not table.replace("_", "").isalnum():
+                   raise ValueError(f"非法表名{table}")
+               if fun_name in ('get_single','get_many','insert_many',):
+                   if isinstance(columns, list) and columns != "*":
+                       for column in columns:
+                           if (
+                               not isinstance(column, str)
+                               or not column.replace("_", "").isalnum()
+                           ):
+                               raise ValueError(f"非法字段名: {column}")
+                       fields = ",".join(columns)
+                   else:
+                       fields = "*"
+               elif fun_name in ('insert_single','update_row','delete_row'):
+                   pass
+               else:
+                   raise ValueError(f'当前函数名字{fun_name}不在使用范围内，你不能使用该装饰器')
+   
+               result= func(*args,**kwargs)
+               # 重点，将被装饰函数的执行结果保存起来，不立即返回。
+               # 否则后面的代码就不会执行了
+               if enabled_commit:
+                   self.conn.commit()
+                   print(f"✅ 已自动提交事务")
+               return result
+           except Exception as e:
+               raise e
+       return wrapper
+   
    ```
 
 ###### 11. 终端执行指令
@@ -1719,6 +1776,549 @@ allure open .\allure-report
 
 ##### 2. pymysql学习
 
-###### 1. 连接数据库
+```python
+from pathlib import Path
+import sys
 
-###### 2. 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import pymysql
+import os
+from config import common_varaints as cv
+from core import Config
+from dotenv import load_dotenv
+from utils import type_parse, mysql_args_parse
+import datetime
+
+
+class Mysql_tool:
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 3306,
+        user: str = None,
+        password: str = None,
+        db: str = None,
+    ):
+        self.conn = pymysql.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=db,
+            charset="utf8mb4",
+            autocommit=False,
+            cursorclass=pymysql.cursors.DictCursor,
+        )
+        if password is None or user is None or db is None:
+            raise ValueError(f"你输入的值中有不正确值，请你检查")
+            # raise用于内部，上抛问题
+            # assert 会触发对应的except类型;
+
+        # autocommit用于测试时，手动提交，避免污染数据
+        # pymysql.cursors.Dictcursor设置cursor的返回类型
+
+    @mysql_args_parse
+    @type_parse(table=str, columns=list | str, con_key=str, conditions=str)
+    def get_single(
+        self,
+        table: str = None,
+        columns: list | str = [],
+        con_key: str = None,
+        conditions: str = None,
+    ):
+        try:
+            sql = (
+                f"select {fields} from {table} where {con_key}=%s"
+                if con_key and conditions
+                else f"select {fields} from {table}"
+            )
+            # 只有值才是%s, 且永远是%s, 表名等就是字符
+            cursor = self.conn.cursor()
+            cursor.execute(sql, (conditions,))
+            return cursor.fetchone()
+            # 元组必须要有,
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    @mysql_args_parse
+    @type_parse(table=str, columns=list | str, con_key=str, conditions=str, number=int)
+    def get_many(
+        self,
+        table: str = None,
+        columns: list | str = None,
+        con_key: str = None,
+        conditions: str = None,
+        number: int = 10,
+    ):
+        try:
+            sql = (
+                f"select {fields} from {table} where {con_key}=%s"
+                if con_key and conditions
+                else f"select {fields} from {table}"
+            )
+            cursor = self.conn.cursor()
+            cursor.execute(sql, (conditions,))
+            return cursor.fetchmany(number)
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    @type_parse(table=str, values=dict)
+    def insert_single(self, table: str = None, values: dict = None):
+        # dict能明确顺序
+        try:
+            if not table.replace("_", "").isalnum():
+                raise ValueError(f"非法表名{table}")
+            fields = []
+            data = []
+            placeholders = []
+
+            for key, value in values.items():
+                if not key.replace("_", "").isalnum():
+                    raise ValueError(f"非法字段{key}")
+                fields.append(f"`{key}`")
+                # 加反引号目的为了，避免关键字干扰
+                data.append(value)
+                placeholders.append("%s")
+            fields_sql = ",".join(fields)
+            placeholders_sql = ",".join(placeholders)
+            sql = f"insert into `{table}` ({fields_sql}) values ({placeholders_sql})"
+            cursor = self.conn.cursor()
+            cursor.execute(sql, data)
+            self.conn.commit()
+            return cursor.lastrowid  # 返回自增ID
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    @mysql_args_parse
+    # @type_parse(table=str,columns=list[str],values=list[list|set]|set[list|set])
+    def insert_many(self,table:str=None,columns:list[str]=[None],values:list[list|set]|set[list|set]=None):
+        try:
+            if not isinstance(values,(list,set)):
+                # isinstance只能检查外层
+                raise TypeError(f'你输入的参数类型不对，当前是{values.__class__}')
+            if not columns or not values or len(columns)!=len(values[0]):
+                raise ValueError(f'columns与values的长度不一致')
+            placeholder_sql=','.join(['%s' for i in range(len(columns))])
+            fields_sql=','.join([column for column in columns])
+            sql=f'insert `{table}` ({fields_sql}) values ({placeholder_sql})'
+            cursor=self.conn.cursor()
+            cursor.executemany(sql,values)
+            self.conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            self.conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+
+
+    @type_parse(table=str, set_key=str, new_value=str, con_key=str, con_value=str)
+    def update_row(
+        self,
+        table: str = None,
+        set_key: str = None,
+        new_value: str = None,
+        con_key: str = None,
+        con_value: str = None,
+    ):
+        try:
+            if not table.replace("_", "").isalnum():
+                raise ValueError(f"非法表名{table}")
+            if None in (set_key, con_key, con_value):
+                raise ValueError(f"传递参数有空值")
+            sql = f"update `{table}` set `{set_key}`=%s where `{con_key}`=%s"
+            cursor = self.conn.cursor()
+            cursor.execute(sql, (new_value, con_value))
+            self.conn.commit()
+            # 更改完数据后，需要提交数据
+            return cursor.rowcount
+            # 返回有几行被改
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    @type_parse(table=str,con_key=str,con_value=str)
+    def delete_row(self, table, con_key: str = None, con_value: str = None):
+        try:
+            if not table.replace('_','').isalnum():
+                raise ValueError(f"非法表名{table}")
+            if None in (con_key, con_value):
+                raise ValueError(f"传递参数有空值")
+            sql=f'delete from `{table}` where `{con_key}`={con_value}'
+            cursor=self.conn.cursor()
+            cursor.execute(cursor)
+            self.conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    def close_connect(self):
+        self.conn.close()
+
+
+if __name__ == "__main__":
+    load_dotenv(dotenv_path=str(cv.CONFIG_DIR / ".env"))
+    host = os.getenv("DB_HOST")
+    port = int(os.getenv("DB_PORT"))
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    db = os.getenv("DB_NAME")
+
+    mysql_item = Mysql_tool(host=host, port=port, user=user, password=password, db=db)
+    # print(mysql_item,type(mysql_item),mysql_item.__class__)
+    data=[
+        ['4','营业部',datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+        ['5','维护部',datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
+    ]
+    data = mysql_item.insert_many(table='departments',columns=['id','name','created_at'],values=data)
+    mysql_item.close_connect()
+    print(data)
+
+```
+
+##### 3. DBUtils连接池
+
+```python
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import pymysql
+import os
+from config import common_varaints as cv
+from core import Config
+from dotenv import load_dotenv
+from utils import type_parse, mysql_args_parse
+import datetime
+from dbutils.pooled_db import PooledDB
+
+
+class Mysql_tool:
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 3306,
+        user: str = None,
+        password: str = None,
+        db: str = None,
+    ):
+        # self.conn = pymysql.connect(
+        #     host=host,
+        #     port=port,
+        #     user=user,
+        #     password=password,
+        #     database=db,
+        #     charset="utf8mb4",
+        #     autocommit=False,
+        #     cursorclass=pymysql.cursors.DictCursor,
+        # )
+        # 使用PooledDB类，创建mysql连接池，池中会至少保存多少个，最多多少个，来使得进程或者线程更加便利
+        # 创建池子
+        self.pool = PooledDB(
+            creator=pymysql,
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=db,
+            charset="utf8mb4",
+            cursorclass=pymysql.cursors.DictCursor,
+            mincached=2,  # 内存总至少得有两个连接进程活着
+            maxcached=5,  # 最多只有5个进程被建立
+            maxshared=0,  # 最多共享连接数，是线程之间，同一个进程能否被共享。建议0；否者适用于单线程的协程
+            maxconnections=10,  # 最大连接数是只能为10个，也就是只能有十个进程或者线程会想用pool池
+            blocking=True,  # 没吃上就等着
+            maxusage=None,  # 连上使用次数是没有限制的
+            setsession=[
+                "SET SESSION wait_timeout=28800"
+            ],  # 防止连接被mysql踢掉，用之前的setup
+            ping=1,  # 避免拿到的连接是死的
+        )
+        # 从池子中，拿去一个连接
+        self.conn = self.pool.connection()
+        if password is None or user is None or db is None:
+            raise ValueError(f"你输入的值中有不正确值，请你检查")
+            # raise用于内部，上抛问题
+            # assert 会触发对应的except类型;
+
+        # autocommit用于测试时，手动提交，避免污染数据
+        # pymysql.cursors.Dictcursor设置cursor的返回类型
+
+    @mysql_args_parse
+    @type_parse(
+        table=str, columns=list | str, con_key=str, conditions=str, enabled_commit=bool
+    )
+    def get_single(
+        self,
+        table: str = None,
+        columns: list | str = [],
+        con_key: str = None,
+        conditions: str = None,
+        enabled_commit: bool = False,
+    ):
+        try:
+            sql = (
+                f"select {columns} from {table} where {con_key}=%s"
+                if con_key and conditions
+                else f"select {columns} from {table}"
+            )
+
+            # 只有值才是%s, 且永远是%s, 表名等就是字符
+            cursor = self.conn.cursor()
+            cursor.execute(sql, (conditions,) if con_key and conditions else None)
+            return cursor.fetchone()
+            # 元组必须要有,
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    @mysql_args_parse
+    @type_parse(
+        table=str,
+        columns=list | str,
+        con_key=str,
+        conditions=str,
+        number=int,
+        enabled_commit=bool,
+    )
+    def get_many(
+        self,
+        table: str = None,
+        columns: list | str = None,
+        con_key: str = None,
+        conditions: str = None,
+        number: int = 10,
+        enabled_commit: bool = False,
+    ):
+        try:
+            sql = (
+                f"select {columns} from {table} where {con_key}=%s"
+                if con_key and conditions
+                else f"select {columns} from {table}"
+            )
+            cursor = self.conn.cursor()
+            cursor.execute(sql, (conditions,) if con_key and conditions else None)
+            return cursor.fetchmany(number)
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    @mysql_args_parse
+    @type_parse(table=str, values=dict, enabled_commit=bool)
+    def insert_single(
+        self, table: str = None, values: dict = None, enabled_commit: bool = False
+    ):
+        # dict能明确顺序
+        try:
+            if not table.replace("_", "").isalnum():
+                raise ValueError(f"非法表名{table}")
+            fields = []
+            data = []
+            placeholders = []
+
+            for key, value in values.items():
+                if not key.replace("_", "").isalnum():
+                    raise ValueError(f"非法字段{key}")
+                fields.append(f"`{key}`")
+                # 加反引号目的为了，避免关键字干扰
+                data.append(value)
+                placeholders.append("%s")
+            fields_sql = ",".join(fields)
+            placeholders_sql = ",".join(placeholders)
+            sql = f"insert into `{table}` ({fields_sql}) values ({placeholders_sql})"
+            cursor = self.conn.cursor()
+            cursor.execute(sql, data)
+            # self.conn.commit()    # 装饰器完成是否提交
+            # 由于只是测试，因此，多数是不需要提交的；如果需要提交需要改变参数值enabled_commit即可
+            # 而且其fixture中，是常结合self.conn.rollback进行回滚，避免污染数据。
+            return cursor.lastrowid  # 返回自增ID
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    @mysql_args_parse
+    # @type_parse(table=str,columns=list[str],values=list[list|set]|set[list|set])
+    def insert_many(
+        self,
+        table: str = None,
+        columns: list[str] = [None],
+        values: list[list | set] | set[list | set] = None,
+        enabled_commit: bool = False,
+    ):
+        try:
+            if not isinstance(values, (list, set)):
+                # isinstance只能检查外层
+                raise TypeError(f"你输入的参数类型不对，当前是{values.__class__}")
+            if not columns or not values or len(columns) != len(values[0]):
+                raise ValueError(f"columns与values的长度不一致")
+            placeholder_sql = ",".join(["%s" for i in range(len(columns))])
+            fields_sql = ",".join([column for column in columns])
+            sql = f"insert `{table}` ({fields_sql}) values ({placeholder_sql})"
+            cursor = self.conn.cursor()
+            cursor.executemany(sql, values)
+            # self.conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            self.conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+
+    @mysql_args_parse
+    @type_parse(
+        table=str,
+        set_key=str,
+        new_value=str,
+        con_key=str,
+        con_value=str,
+        enabled_commit=bool,
+    )
+    def update_row(
+        self,
+        table: str = None,
+        set_key: str = None,
+        new_value: str = None,
+        con_key: str = None,
+        con_value: str = None,
+        enabled_commit: bool = False,
+    ):
+        try:
+            if not table.replace("_", "").isalnum():
+                raise ValueError(f"非法表名{table}")
+            if None in (set_key, con_key, con_value):
+                raise ValueError(f"传递参数有空值")
+            sql = f"update `{table}` set `{set_key}`=%s where `{con_key}`=%s"
+            cursor = self.conn.cursor()
+            cursor.execute(sql, (new_value, con_value))
+            # self.conn.commit()
+            # 更改完数据后，需要提交数据
+            return cursor.rowcount
+            # 返回有几行被改
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    @mysql_args_parse
+    @type_parse(table=str, con_key=str, con_value=str, enabled_commit=bool)
+    def delete_row(
+        self,
+        table,
+        con_key: str = None,
+        con_value: str = None,
+        enabled_commit: bool = False,
+    ):
+        try:
+            if not table.replace("_", "").isalnum():
+                raise ValueError(f"非法表名{table}")
+            if None in (con_key, con_value):
+                raise ValueError(f"传递参数有空值")
+            sql = f"delete from `{table}` where `{con_key}`={con_value}"
+            cursor = self.conn.cursor()
+            cursor.execute(cursor)
+            # self.conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            self.conn.rollback()
+            # 失败回滚
+            raise e
+        finally:
+            cursor.close()
+
+    def close_connect(self):
+        self.conn.close()
+
+    def close_pool(self):
+        self.pool.close()
+
+
+if __name__ == "__main__":
+    load_dotenv(dotenv_path=str(cv.CONFIG_DIR / ".env"))
+    host = os.getenv("DB_HOST")
+    port = int(os.getenv("DB_PORT"))
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    db = os.getenv("DB_NAME")
+
+    mysql_item = Mysql_tool(host=host, port=port, user=user, password=password, db=db)
+    # print(mysql_item,type(mysql_item),mysql_item.__class__)
+    # data=[
+    #     ['4','营业部',datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+    #     ['5','维护部',datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
+    # ]
+    data = mysql_item.get_single("departments", "*")
+    mysql_item.close_connect()
+    mysql_item.close_pool()
+    print(data)
+
+```
+
+##### 4. 密码保护
+
+###### 1. 先忽略，后创建，模版公开，密码私有。
+
+```tex
+# 环境变量（敏感信息）
+.env
+*.env
+.env.*
+
+# 其他忽略规则...
+__pycache__/
+*.log
+```
+
+###### 2. 先创建，后忽略，挽救措施
+
+```bash
+# step1: 确保工作区干净
+git status
+# 如果有红色未提交文件，先执行
+git add . && git -m  "temp: 保存当前工作"
+
+# step2: 从git移除追踪，但保留本地文件
+git rm --cached content/API_Project/config/.env		# 不想上传的文件，重要文件
+
+# Step3: 确认.gitignore文件中已经包含不想上传文件
+cat .gitignore
+
+# step4: 提交这次删除（Git会理解为停止追踪）
+git add .gitignore
+git commit -m "security: 移除 .env 文件，改为本地环境变量管理"
+
+# step5: 如果已经推送到github/gitee, 强制更新远程（删除远程的.env）
+git push origin main --forece-with-lease
+```
+

@@ -13,5 +13,6 @@ TESTCASES_DIR = PROJECT_DIR / "testcases"
 UTILS_DIR = PROJECT_DIR / "utils"
 
 # file
-ENV_SETTINGS_FILE=CONFIG_DIR / 'env_settings.yaml'
-TEST_CASES_FILE=DATA_DIR / 'test_cases.json'
+ENV_SETTINGS_FILE=str(CONFIG_DIR / 'env_settings.yaml')
+TEST_CASES_FILE=str(DATA_DIR / 'test_cases.json')
+ENV_FILE=str(CONFIG_DIR / '.env')
