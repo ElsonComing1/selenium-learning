@@ -2322,3 +2322,182 @@ git commit -m "security: 移除 .env 文件，改为本地环境变量管理"
 git push origin main --forece-with-lease
 ```
 
+##### 5. 数据驱动 + DB验证
+
+###### 1. 创建一个简易的服务器
+
+```python
+from flask import Flask, request, jsonify
+import pymysql
+
+app = Flask(__name__)
+
+# 数据库配置（改为你自己的）
+DB_CONFIG = {
+    'host': 'localhost',
+    'user': 'root',
+    'password': '123456',
+    'database': 'api_db_test',
+    'charset': 'utf8mb4'
+}
+
+def get_db():
+    return pymysql.connect(**DB_CONFIG)
+
+@app.route('/api/users', methods=['POST'])
+def create_user():
+    """创建用户并写入 MySQL（真实操作）"""
+    data = request.json
+    username = data.get('username')
+    email = data.get('email')
+    
+    conn = get_db()
+    try:
+        with conn.cursor() as cursor:
+            sql = "INSERT INTO users (username, email) VALUES (%s, %s)"
+            cursor.execute(sql, (username, email))
+            conn.commit()
+            new_id = cursor.lastrowid
+            
+        return jsonify({
+            'code': 201,
+            'id': new_id,
+            'username': username,
+            'message': '创建成功'
+        }), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'code': 500, 'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/users/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    """查询用户（供验证用）"""
+    conn = get_db()
+    try:
+        with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+            cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+            user = cursor.fetchone()
+            
+        if user:
+            return jsonify({'code': 200, 'data': user})
+        return jsonify({'code': 404, 'message': '用户不存在'}), 404
+    finally:
+        conn.close()
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
+```
+
+###### 2. 运行服务器
+
+```bash
+cd 服务器文件目录
+python mock_server.py
+```
+
+###### 3. fixture创建
+
+需要将夹具放入根级别的`conftest.py`中
+
+```python
+from utils import Mysql_tool
+from dotenv import load_dotenv
+from config import common_varaints as cv
+import os
+
+
+@common_exception
+@pytest.fixture(scope="session")
+# 单独写出一个pool，原因是pool对应着会话级别，不需要不断地创建新的pool,不然太麻烦，也失去意义
+def mysql_item():
+    if not load_dotenv(dotenv_path=cv.ENV_FILE):
+        log.info('成功加载mysql配置文件：{cv.ENV_FILE}')
+        raise ValueError(f"该路径{cv.ENV_FILE}下，没能成功加载")
+
+    mysql_item=Mysql_tool(host=os.getenv('DB_HOST'),
+        port=os.getenv('DB_PORT'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        db=os.getenv('DB_NAME'),)
+    log.info('成功创建mysql实例')
+    yield mysql_item
+    mysql_item.conn.rollback()
+    log.info('成功回滚')
+    mysql_item.close_connect()
+    log.info('成功关闭连接')
+    mysql_item.close_pool()
+    log.info('成功关闭mysql pool')
+
+```
+
+###### 4. 测试模块创建
+
+```python
+import pytest
+import requests
+BASE_URL = "http://127.0.0.1:5000"
+
+def test_create_user_e2e(mysql_item):
+    '''
+    测试端到端一致性
+    1. 调 API 创建用户
+    2. 立即查 MySQL 验证数据真的写入了
+    3. 比对 API 返回的 ID 和 DB 中的记录
+    通过api写入数据至数据库然后，通过api返回值与数据库中的值，进行比较是否一致
+    '''
+    payload={
+        'username':'test_elson_001',
+        'email':'elson@test.com'
+    }
+
+    resp=requests.post(f'{BASE_URL}/api/users',json=payload)
+    assert resp.status_code==201
+    api_data=resp.json()
+    user_id=api_data['id']
+
+    print(f"API 创建成功，返回 ID: {user_id}")
+    db_record=mysql_item.get_single('users','*','id',str(user_id))
+    assert db_record is not None, f"DB 中找不到 ID={user_id} 的记录，API 说成功了但数据没落地！"
+    assert db_record['username'] == payload['username']
+    assert db_record['email'] == payload['email']
+    assert db_record['status'] == 'active'  # 验证默认值
+    print(f"✅ 一致性校验通过：API 返回 ID={user_id}，DB 记录匹配")
+```
+
+###### 5. 创建表
+
+```bash
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status ENUM('active', 'inactive') DEFAULT 'active'
+);
+```
+
+###### 6. 结果验证：
+
+数据库：
+
+```bash
+mysql> select * from users;
++----+----------------+----------------+---------------------+--------+
+| id | username       | email          | created_at          | status |
++----+----------------+----------------+---------------------+--------+
+|  1 | test_elson_001 | elson@test.com | 2026-04-12 19:52:25 | active |
+|  2 | test_elson_001 | elson@test.com | 2026-04-12 19:55:07 | active |
+|  3 | test_elson_001 | elson@test.com | 2026-04-12 20:12:41 | active |
+|  4 | test_elson_001 | elson@test.com | 2026-04-12 20:13:56 | active |
++----+----------------+----------------+---------------------+--------+
+4 rows in set (0.00 sec)
+```
+
+报告：
+
+![](../picturs/15.png)
+
+![](../picturs/16.png)
+
