@@ -2432,6 +2432,18 @@ def mysql_item():
 
 ```
 
+```tex
+1. core层是尽量做到通用，因此会抽象，不关心业务数据的含义，但关心数据的序列化格式
+2. service层是业务域（模块）是实体：管理同一类“业务实体”的集合，不是管理流程（注册-->登录-->选择商品-->下单）;注册属于UserSevice;下单属于OrderService。流程跨域存在，但Service之间不直接依赖；流程由Testcases/Fixture层编排，Service层只提供原子能力
+3. 流程是跨域的但是不依赖的：注册（UserService）-->创建设备（DeviceService）-->绑定（UserService）-->开始清扫（CleaningService）
+4. 业务域是垂直的：DeviceService只管理设备，不管理登录
+5. testcases（业务能力）-->Services（翻译）-->Core（实现能力）  (解耦：不越级依赖)
+6. 流程通过在conftest.py下，用fixture和scope来定义被测试函数需要的条件，层层定义，不同层供不同测试函数以及不同夹具，依次满足测试函数的什么条件下测试。Fixture通过声明式依赖链构建前置条件：上层Fixture声明依赖下层Fixture，pytest自动按拓扑顺序执行，形成'先注册→再绑定→后清扫'的强制流程
+7. 实体既可以是具体的也可以是抽象的，但是有用唯一的ID（唯一标识）和生命周期（状态变化）；
+```
+
+
+
 ###### 4. 测试模块创建
 
 ```python
