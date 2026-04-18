@@ -1,0 +1,10 @@
+docker-workflow:latest          # Docker Pipeline 核心
+docker-commons:latest           # Docker 凭证管理
+git:latest                      # Git 拉取
+gitee:latest                    # Gitee 集成插件
+allure-jenkins-plugin:latest    # Allure 报告展示
+email-ext:latest                # 扩展邮件功能
+dingding-notifications:latest   # 钉钉通知
+configuration-as-code:latest    # JCasC 配置即代码
+timestamper:latest              # 控制台时间戳
+ws-cleanup:latest               # 工作空间清理

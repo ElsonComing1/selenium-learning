@@ -1,0 +1,32 @@
+# Git
+.git/
+.gitignore
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虚拟环境（如果你在本地建了 venv）
+venv/
+env/
+ENV/
+
+# 测试产出（这些应该在运行时生成，而非打包）
+logs/
+reports/
+allure-results/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 其他
+*.md          # README 不需要打包进运行镜像（可选）
+Dockerfile*   # 自身
+docker-compose*

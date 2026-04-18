@@ -1,0 +1,61 @@
+# ==========================================
+# 文件名：jenkins/casc_configs/jenkins.yaml
+# 用途：Jenkins 系统级配置（邮件服务器、时区等）
+# ==========================================
+jenkins:
+  systemMessage: "API 自动化测试 CI/CD 平台（国内优化版）"
+  # 国内插件更新源
+  updateCenter:
+    sites:
+      - id: default
+        url: https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
+  
+  # 时区设置
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: TZ
+            value: Asia/Shanghai
+
+  # 邮件服务器配置（以 QQ 邮箱为例，需替换为真实账号）
+  mailer:
+    smtpServer: smtp.qq.com
+    smtpPort: 465
+    useSsl: true
+    defaultSuffix: "@qq.com"
+    authentication:
+      username: ${EMAIL_USER}
+      password: ${EMAIL_PASSWORD}
+
+  # 扩展邮件默认配置
+  extendedEmail:
+    smtpServer: smtp.qq.com
+    smtpPort: 465
+    useSsl: true
+    defaultContentType: text/html
+    defaultSubject: "构建通知: $PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS!"
+    defaultBody: |
+      <h3>构建结果: ${BUILD_STATUS}</h3>
+      <p>项目: ${PROJECT_NAME}</p>
+      <p>构建号: ${BUILD_NUMBER}</p>
+      <p>Allure 报告: <a href="${BUILD_URL}allure/">点击查看</a></p>
+      <p>控制台日志: <a href="${BUILD_URL}console">点击查看</a></p>
+
+# 凭证（示例，实际应在 UI 中配置或使用环境变量注入）
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # Gitee 账号密码凭证（ID: gitee-credentials）
+          - usernamePassword:
+              scope: GLOBAL
+              id: gitee-credentials
+              username: ${GITEE_USER}
+              password: ${GITEE_PASS}
+              description: Gitee 代码仓库凭证
+          # 钉钉 Webhook Token（ID: dingding-token）
+          - string:
+              scope: GLOBAL
+              id: dingding-token
+              secret: ${DINGDING_TOKEN}
+              description: 钉钉机器人 Token

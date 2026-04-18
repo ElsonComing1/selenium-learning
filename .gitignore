@@ -16,3 +16,5 @@ allure-results/*
 report/*
 content/API_Project/config/.env
 
+logs/
+

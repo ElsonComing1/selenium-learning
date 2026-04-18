@@ -2,6 +2,96 @@
 
 #### 1. 基础知识
 
+##### 1. 框架搭建步骤
+
+```python
+1.用“谁创建资源，谁负责yield清理；谁只是使用/包装，谁就return”来决定用yield还是return
+2.测试方法就是测试案例得推演
+3.session全局单例，除session外的function class module package是会多次的
+4.需要维持状态的是实例，而不需要维持状态，纯使用该类里面方法的，直接@classmethod(类方法)；“是否有什么需要保持”
+5.集中管理配置便于快速程序调试
+6.core层被继承是为了复用core层方法，而不是变量
+
+'''
+框架编写路线图：从0到1的先后顺序
+
+step1:先跑同一个需求（不想任何结构）
+# 目标确认能跑起来即可，环境没问题
+# test_raw.py  先验证环境能跑通
+import requests
+response=requests.get('https://httpbin.org/ip ')
+assert response.status_code==200
+print(response.json())
+
+
+step2:抽出Core层（解决重复代码，尽量通用）（最难的一步，根据前一步）
+目标：所有HTTP细节（URL拼接、超时）藏到这里。
+# core/base_api.py  只封装requests，不做业务
+import requests
+class BaseApi(object):
+    # 从前一个步骤中，我们发现在变的（url），当然当多写几个测试，发现在变化的还有请求方式，以及会话是不同的
+    def __init__(self,session):
+        self.session=session
+        # self.method=method,
+        # self.url=url
+    
+    # 其方法需要尽量的通用且单一供Service使用
+    def request_by(self,method,url,**kwargs):
+        # self.session.requests(method,url,**kwargs)
+        # 从此发现其实需要使用self.method和self.url时，也就在request_by中，所以作为参数传递
+
+
+step3:抽出Service层（第一个业务方法）    
+# api/httpbin_service.py  只做业务翻译
+# 目标：所有HTTP细节（URL拼接、超时）藏到这里。
+from core.base_api import BaseApi
+class HttpbinService(BaseApi)
+    def get_ip(self):
+        return self.request_by('GET',url1)
+    
+    def post_data(self,data):
+        return self.request_by("POST",url2,json=data)
+
+
+Step4：抽出Fixture（解决实例管理）
+目标：测试函数不再service = HttpbinService()，直接参数注入。
+# conftest.py  管理Service生命周期
+import pytest
+from api.httpbin_service import HttpbinService
+
+@pytest.fixture(scope='session')
+def http_service():
+    """整个测试会话只创建一个Service"""
+    service = HttpbinService()
+    yield service
+    # 如果有清理需要，写在这里
+
+Step 5：写出第一个"干净"的测试
+目标：测试代码里看不到URL、看不到session、看不到HTTP细节。
+# testcases/test_demo.py
+def test_get_ip(http_service):  # 自动注入fixture
+    result=http_service.get_ip()
+    assert "origin" in result       # 只验证业务结果
+
+    
+Step 6：添加配置和Allure（产级完善）
+目标：支持多环境切换，生成可视化报告。
+# config/env_settings.yaml  环境配置
+# conftest.py  添加pytest_addoption和allure钩子
+# 添加@allure.feature等装饰器
+'''
+```
+
+##### 2. Core vs Services vs Testcases
+
+| 层级            | 对应做饭                         | 对应你的代码                  | 粒度                 |
+| --------------- | -------------------------------- | ----------------------------- | -------------------- |
+| **Core层**      | 电饭煲**（通用工具）**           | `request_by(method, url)`     | 最细：只关心HTTP协议 |
+| **Service层**   | 盛饭、淘米、加水**（原子操作）** | `get_ip()`, `post_data(data)` | 中等：单个业务动作   |
+| **Testcases层** | 做一顿完整的饭**（流程）**       | `test_full_flow()`            | 粗：多个业务动作组合 |
+
+##### 3. 常用知识
+
 ```python
 '''
 1. Pytest执行顺序：
@@ -2512,4 +2602,658 @@ mysql> select * from users;
 ![](../picturs/15.png)
 
 ![](../picturs/16.png)
+
+#### 4. 基于Docker + Jenkins + WSL的CI/CD自动化测试框架
+
+理解：
+
+- Windows 上的 `docker.exe` → 通过 WSL2 桥梁 → 调用 WSL2 中的 `dockerd`
+- WSL2 中的原生 Docker → 直接通过 Unix Socket → 调用 WSL2 中的 `dockerd`
+
+`/var/run/docker.sock`象征着`docker engine`（docker desktop自带）的控制权，它是`WSL2`的不是`Windows`的，但是是由`Docker Desktop`带来的，因此主机是`WSL2`，而且控制权也是`WSL2 Linux`；`Windows`只是给`WSL2`提供环境。
+
+`docker-compose`是Docker官方提供的“多容器编排工具”，核心作用是：用一个YAML文件定义整个应用栈，一条命令启动/停止所有服务。通过`docker-compose up`和`docker-compose down`
+
+##### 1. 目录结构
+
+```bash
+C:\Users\16531\Desktop\selenium-learning\
+├── jenkins\                      # Jenkins 部署配置
+│   ├── docker-compose.yml       # 主控编排文件
+│   ├── Dockerfile.jenkins       # 自定义 Jenkins 镜像（预装插件+国内源）
+│   └── casc_configs\            # Jenkins Configuration as Code
+│       ├── jenkins.yaml         # 系统配置（邮件、时区、国内插件源）
+│       └── plugins.txt          # 预装插件清单
+├── API_Project\                 # 你的测试项目（已存在）
+│   ├── Dockerfile.test          # 测试运行环境（国内源加速）
+│   ├── requirements.txt         # Python 依赖（国内 PyPI）
+│   ├── conftest.py
+│   ├── prepare_works\
+│   └── testcases\
+└── Jenkinsfile                  # 流水线定义（Gitee → 测试 → 通知）
+```
+
+##### 2. Jenkins Master部署配置
+
+###### 1. Jenkins自定义镜像
+
+在项目下，创建`jenkins/Dockerfile.jenkins`:
+
+```dockerfile
+# ==========================================
+# 文件名：jenkins/Dockerfile.jenkins
+# 用途：预配置 Jenkins，含国内源、预装插件
+# ==========================================
+FROM jenkins/jenkins:lts-jdk17
+# FROM 指定接触镜像; 空间名/仓库名; lts:long trem support; jdk17 标签后缀   （一层）
+# 不是latest而是lts是因为最新开发版本不稳定
+
+USER root
+# USER用户切换 root超级用户；当前安装环境需要，当环境安装完毕，需要切换回去。 （一层）
+# 因为jenkins镜像的默认用户是jenkins改用户没有权限执行apt-get install
+
+# 更换 Debian 源为阿里云（构建镜像时加速）
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release \
+        # 安装 Docker CLI（用于控制宿主机 Docker）
+        docker.io && \
+    rm -rf /var/lib/apt/lists/*
+# 第一个debian是主软件源，第二个security是安全更新源，均需要更新为国内的阿里云，不然下载速度差异大，还是很慢
+# apt-get update作用是更新搜索路径；如果只是换源，不更新搜索路径，执行下载，其速度还是很慢。
+# 也就是说，当换源后，就需要进行下载搜索路径更新，使其换源生效。
+# 安装ca-certificates是为了能够访问https://协议网址
+# gnupg是为了校验软件包的数字签名，验证使用的是否是正版软件
+# lsb-release 自动系统版本识别，用于选择正确的仓库
+# curl http命令行客户端，用于消灾GPG公钥，测试网络、调用API
+# docker.io docker引擎客户端，服务端是desktop docker，通过socket通信，使其指令有效在容器内运行Docker命令，实现Docker-outside-of-Docker
+# 删除软件包索引数据库
+
+# 预装 Jenkins 插件（使用国内清华源）
+COPY --chown=jenkins:jenkins casc_configs/plugins.txt /usr/share/jenkins/ref/plugins.txt
+# 复制指定文件到指定镜像中，且指定所有者和用户组
+
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt \
+    --jenkins-update-center https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
+# jenkins-plugin-cli插件安装命令行工具；--plugin-file指定插件列表文件；--jenkins-update-center 换源
+# 目的：为了不在首次进入时耗费更多时间安装，所以直接镜像安装。且更快。
+
+
+# 加载 Configuration as Code 配置
+ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
+# ENV设置环境变量，高速jenkins，我的配置都在这个路径的yaml文件下，加载时使用这个，而不使用默认UI配置
+COPY --chown=jenkins:jenkins casc_configs/jenkins.yaml /var/jenkins_home/casc_configs/jenkins.yaml
+# 将windows下写好的配置文件直接整如镜像
+
+# 确保目录权限正确
+RUN chown -R jenkins:jenkins /var/jenkins_home
+# 确保该路径下的全部内容的所有者和用户组都是jenkins:jenkins
+# jenkins的主目录是/var/jenkins_home
+
+USER jenkins
+# 再次切回非特权用户jenkins;目的为了安全，避免不发份子利用
+
+# 构建指令，需要进入C:\Users\16531\Desktop\selenium-learning\jenkins；然后执行docker build -f Dockerfile.jenkins -t 镜像名（可以相同）:标签名（不能相同） .(构建路径)
+```
+
+###### 2. 预装插件清单
+
+创建 `jenkins/casc_configs/plugins.txt`：
+
+```tex
+docker-workflow:latest          # Docker Pipeline 核心
+docker-commons:latest           # Docker 凭证管理
+git:latest                      # Git 拉取
+gitee:latest                    # Gitee 集成插件
+allure-jenkins-plugin:latest    # Allure 报告展示
+email-ext:latest                # 扩展邮件功能
+dingding-notifications:latest   # 钉钉通知
+configuration-as-code:latest    # JCasC 配置即代码
+timestamper:latest              # 控制台时间戳
+ws-cleanup:latest               # 工作空间清理
+```
+
+###### 3. Jenkins系统配置（JCasC）
+
+Jenkins Configuration as Code：Jenkins的配置从代码中配置，而不是Web UI设置，可以实现配置的版本控制、自动化复现和代码审查。
+
+创建 `jenkins/casc_configs/jenkins.yaml`：
+
+```yaml
+# ==========================================
+# 文件名：jenkins/casc_configs/jenkins.yaml
+# 用途：Jenkins 系统级配置（邮件服务器、时区等）
+# ==========================================
+jenkins:
+  systemMessage: "API 自动化测试 CI/CD 平台（国内优化版）"
+  # 国内插件更新源
+  updateCenter:
+    sites:
+      - id: default
+        url: https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
+  
+  # 时区设置
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: TZ
+            value: Asia/Shanghai
+
+  # 邮件服务器配置（以 QQ 邮箱为例，需替换为真实账号）
+  mailer:
+    smtpServer: smtp.qq.com
+    smtpPort: 465
+    useSsl: true
+    defaultSuffix: "@qq.com"
+    authentication:
+      username: ${EMAIL_USER}
+      password: ${EMAIL_PASSWORD}
+
+  # 扩展邮件默认配置
+  extendedEmail:
+    smtpServer: smtp.qq.com
+    smtpPort: 465
+    useSsl: true
+    defaultContentType: text/html
+    defaultSubject: "构建通知: $PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS!"
+    defaultBody: |
+      <h3>构建结果: ${BUILD_STATUS}</h3>
+      <p>项目: ${PROJECT_NAME}</p>
+      <p>构建号: ${BUILD_NUMBER}</p>
+      <p>Allure 报告: <a href="${BUILD_URL}allure/">点击查看</a></p>
+      <p>控制台日志: <a href="${BUILD_URL}console">点击查看</a></p>
+
+# 凭证（示例，实际应在 UI 中配置或使用环境变量注入）
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # Gitee 账号密码凭证（ID: gitee-credentials）
+          - usernamePassword:
+              scope: GLOBAL
+              id: gitee-credentials
+              username: ${GITEE_USER}
+              password: ${GITEE_PASS}
+              description: Gitee 代码仓库凭证
+          # 钉钉 Webhook Token（ID: dingding-token）
+          - string:
+              scope: GLOBAL
+              id: dingding-token
+              secret: ${DINGDING_TOKEN}
+              description: 钉钉机器人 Token
+```
+
+###### 4. Docker Compose编排
+
+创建 `jenkins/docker-compose.yml`：
+
+```yaml
+# ==========================================
+# 文件名：jenkins/docker-compose.yml
+# 用途：一键部署完整 Jenkins 环境
+# ==========================================
+version: "3.8"
+
+services:
+  jenkins:
+    build:
+      context: .	# 构建上下文，指定为当前目录
+      dockerfile: Dockerfile.jenkins	# 前面写好的dockerfile来构建镜像
+    container_name: jenkins-master-cicd		# 构建后的容器名称
+    user: root  # jenkins需要 root 权限操作 docker.sock
+    restart: unless-stopped	# 除非手动，崩溃或者宿主机重启后自动重启
+    privileged: true  # 必须，用于访问 Docker 引擎，特权模式，允许容器访问宿主机设备文件
+    
+    ports:
+      - "8080:8080"		# jenkins web ui
+      - "50000:50000"		# JNLP Agent 通信；本方案用动态容器（Docker Agent）而非 JNLP Agent，这个端口实际不会用到，但保留是最佳实践
+    
+    environment:
+      # 跳过安装向导（生产环境建议首次启动后注释掉），配合JCasC实现开箱即用
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      # 传递凭证环境变量（更安全的方式是用 Docker Secrets）
+      # 从宿主机.env文件获取值，如果没有定义，则默认认为空字符串:-后面的值，shell参数扩展
+      - GITEE_USER=${GITEE_USER:-}
+      - GITEE_PASS=${GITEE_PASS:-}
+      - EMAIL_USER=${EMAIL_USER:-}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+      - DINGDING_TOKEN=${DINGDING_TOKEN:-}
+    
+    volumes:
+      # Jenkins 数据持久化
+      - jenkins_home:/var/jenkins_home
+      # 保存Jekins所有配置、插件、构建历史、凭证。容器删除后数据不丢失。实际存储在WSL2的/var/lib/docker/volumes/jenkins_home/_data
+      # 是命名卷，给个名字就可以了。其他卷是绑定挂在
+      
+      # ★ 核心关键：Docker 操控通道（兄弟容器模式）
+      - /var/run/docker.sock:/var/run/docker.sock
+      # jenkins容器内的进程通过这个socket文件，向宿主机的Docker引擎发送命令。
+      # 在Jenkins pipeline中执行docker build等，实际是在宿主机上创建兄弟容器，而不是在jenkins容器中嵌套创建。
+      
+      # 挂载宿主机 Docker 二进制文件（WSL2 路径）
+      - /usr/bin/docker:/usr/bin/docker:ro
+      # 由于jenkins中没有docker命令，所以将其挂在进去。
+      
+      # 挂载本地时区文件
+      - /etc/localtime:/etc/localtime:ro
+      # 让jenkins容器的时间同步wsl
+    
+    # 确保 Jenkins 用户有权限操作 Docker
+    group_add:
+      - docker
+      # 将jenkins容器中root用户添加到宿主机的docker用户组
+      # 虽然 privileged: true 已经给了特权，但显式加入 docker 组可以确保对 /var/run/docker.sock 的访问权限在某些严格 SELinux/AppArmor 环境下也生效
+
+volumes:
+  jenkins_home:
+    driver: local
+    # 使用 Docker 本地卷驱动创建 jenkins_home 卷；除非你执行 docker volume rm jenkins_home
+```
+
+##### 3. API_Project 测试镜像（国内源加速）
+
+创建 `API_Project/Dockerfile.test`：
+
+```dockerfile
+# ==========================================
+# 文件名：API_Project/Dockerfile.test
+# 用途：极速构建的测试运行环境（全链路国内源）
+# ==========================================
+FROM python:3.12-slim
+
+# 更换 Debian 源为阿里云镜像（构建速度提升 10 倍）
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+
+# 安装编译依赖（如需 Chrome 可在此扩展）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 先复制依赖文件，利用 Docker 缓存层
+COPY requirements.txt .
+
+# 使用清华 PyPI 镜像安装依赖（避免国外源超时）
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    -r requirements.txt
+
+# 复制项目源码（由 Jenkins 在构建时注入，此处仅为完整性）
+COPY . .
+
+# 创建报告目录
+RUN mkdir -p /app/report/allure-results
+
+# 默认入口（会被 Jenkins Pipeline 覆盖）
+CMD ["pytest", "--version"]
+```
+
+##### 4. 核心流水线（Jenkinsfile）
+
+```groovy
+// ==========================================
+// 文件名：Jenkinsfile（位于项目根目录）
+// 用途：完整 CI/CD 流程：Gitee → 动态容器 → Allure → 钉钉+邮件
+// ==========================================
+
+pipeline {
+    // 使用 any 即可，因为我们手动控制 Docker 容器
+    agent any
+    
+    environment {
+        // 镜像与容器命名（带构建号隔离，防止并发冲突）
+        TEST_IMAGE = "api-test-env:${BUILD_NUMBER}"
+        TEST_CONTAINER = "api-test-runner-${BUILD_NUMBER}"
+        
+        // Gitee 凭证 ID（需在 Jenkins 中预先配置）
+        GITEE_CREDENTIALS = 'gitee-credentials'
+        
+        // 钉钉 Webhook 凭证 ID
+        DINGDING_CREDENTIALS = 'dingding-token'
+        
+        // 邮箱接收列表（逗号分隔）
+        EMAIL_RECIPIENTS = '16531@qq.com,manager@company.com'  // 修改为你的邮箱
+    }
+    
+    options {
+        // 保留最近 10 次构建记录，节省磁盘
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        // 禁止并发构建（避免动态容器名冲突）
+        disableConcurrentBuilds()
+        // 添加时间戳到控制台输出
+        timestamps()
+    }
+    
+    stages {
+        // --------------------------------------------------
+        // Stage 1: 从 Gitee 拉取最新代码
+        // --------------------------------------------------
+        stage('Checkout from Gitee') {
+            steps {
+                script {
+                    echo ">>> 正在从 Gitee 拉取代码..."
+                    
+                    // 方式 A：使用预存凭证（推荐）
+                    git(
+                        url: 'https://gitee.com/yourusername/selenium-learning.git',  // ★ 修改为你的仓库地址
+                        branch: 'main',  // 或 master
+                        credentialsId: "${GITEE_CREDENTIALS}"
+                    )
+                    
+                    // 方式 B：如果是公开仓库，可省略 credentialsId
+                    // git url: 'https://gitee.com/yourname/selenium-learning.git', branch: 'main'
+                    
+                    echo ">>> 代码拉取完成，当前提交: ${sh(returnStdout: true, script: 'git log -1 --pretty=format:"%h %s"').trim()}"
+                }
+            }
+        }
+        
+        // --------------------------------------------------
+        // Stage 2: 构建测试镜像（国内缓存加速）
+        // --------------------------------------------------
+        stage('Build Test Image') {
+            steps {
+                script {
+                    dir('API_Project') {
+                        echo ">>> 正在构建测试镜像: ${TEST_IMAGE}"
+                        
+                        // 使用宿主机的 Docker（通过 docker.sock）
+                        sh """
+                            docker build \
+                                --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+                                -t ${TEST_IMAGE} \
+                                -f Dockerfile.test \
+                                .
+                        """
+                        
+                        echo ">>> 镜像构建完成"
+                    }
+                }
+            }
+        }
+        
+        // --------------------------------------------------
+        // Stage 3: 运行动态容器执行测试（核心数据传递）
+        // --------------------------------------------------
+        stage('Run Tests in Dynamic Container') {
+            steps {
+                script {
+                    echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
+                    
+                    // ★ 核心机制：将 Jenkins Workspace（含刚拉取的代码）挂载进容器
+                    // 这样容器内 /workspace 就是最新代码，无需 stash/unstash
+                    // 同时挂载 report 目录用于收集 Allure 结果
+                    
+                    sh """
+                        # 清理可能存在的同名容器（防御性编程）
+                        docker rm -f ${TEST_CONTAINER} || true
+                        
+                        # 运行动态容器：
+                        # --rm: 停止后自动删除（真正"用完即走"）
+                        # -v ${WORKSPACE}:/workspace: 将 Jenkins 工作空间挂载到容器内
+                        # -w /workspace/API_Project: 设置工作目录到测试项目
+                        # --volumes-from: 也可继承数据卷，但直接挂载更清晰
+                        
+                        docker run --rm \
+                            --name ${TEST_CONTAINER} \
+                            -v "${WORKSPACE}:/workspace:rw" \
+                            -w /workspace/API_Project \
+                            -e PYTHONPATH=/workspace/API_Project \
+                            ${TEST_IMAGE} \
+                            pytest prepare_works/ testcases/ -v \
+                                --alluredir=/workspace/API_Project/report/allure-results \
+                                --tb=short \
+                                -rA
+                    """
+                    
+                    echo ">>> 动态容器执行完毕"
+                }
+            }
+        }
+        
+        // --------------------------------------------------
+        // Stage 4: 生成 Allure 报告（在 Master 端执行）
+        // --------------------------------------------------
+        stage('Generate Allure Report') {
+            steps {
+                script {
+                    echo ">>> 生成 Allure 报告..."
+                    
+                    // 检查 Allure 结果是否存在
+                    def allureDir = 'API_Project/report/allure-results'
+                    def resultsExist = sh(returnStatus: true, script: "test -d ${allureDir} && test \"\\$(ls -A ${allureDir})\"")
+                    
+                    if (resultsExist == 0) {
+                        echo ">>> 发现 Allure 结果，生成报告..."
+                        allure([
+                            includeProperties: false,
+                            jdk: '',
+                            properties: [],
+                            reportBuildPolicy: 'ALWAYS',
+                            results: [[path: "${allureDir}"]]
+                        ])
+                    } else {
+                        echo "⚠️ 警告：未发现 Allure 结果，可能测试未生成或目录为空"
+                    }
+                }
+            }
+        }
+    }
+    
+    // --------------------------------------------------
+    // Post 构建处理：通知与清理（无论成败都执行）
+    // --------------------------------------------------
+    post {
+        always {
+            script {
+                echo ">>> 执行清理任务..."
+                
+                // 清理本次构建的镜像（节省磁盘，保留缓存层）
+                sh """
+                    docker rmi ${TEST_IMAGE} || true
+                    docker rm -f ${TEST_CONTAINER} || true
+                """
+                
+                // 清理工作空间中的临时文件（保留 Allure 结果用于展示）
+                cleanWs(
+                    cleanWhenNotBuilt: false,
+                    deleteDirs: true,
+                    notFailBuild: true,
+                    patterns: [
+                        [pattern: '**/__pycache__/**', type: 'INCLUDE'],
+                        [pattern: '**/.pytest_cache/**', type: 'INCLUDE'],
+                        [pattern: '**/*.pyc', type: 'INCLUDE'],
+                        [pattern: 'API_Project/report/allure-results/**', type: 'EXCLUDE']  // 保留结果
+                    ]
+                )
+            }
+        }
+        
+        // --------------------------------------------------
+        // 成功时：发送钉钉通知 + 邮件
+        // --------------------------------------------------
+        success {
+            script {
+                // 1. 钉钉通知
+                dingtalk(
+                    robot: "${DINGDING_CREDENTIALS}",  // 使用凭证 ID
+                    type: 'MARKDOWN',
+                    title: "✅ 构建成功: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    text: [
+                        "### 🎉 API 自动化测试构建成功",
+                        "---",
+                        "**项目**: ${env.JOB_NAME}",
+                        "**构建号**: ${env.BUILD_NUMBER}",
+                        "**分支**: ${env.GIT_BRANCH}",
+                        "**持续时间**: ${currentBuild.durationString}",
+                        "**Allure 报告**: [点击查看](${env.BUILD_URL}allure/)",
+                        "**控制台**: [查看日志](${env.BUILD_URL}console)",
+                        "---",
+                        "📊 测试环境已自动清理，资源已释放"
+                    ].join("\n")
+                )
+                
+                // 2. 邮件通知
+                emailext(
+                    subject: "✅ 构建成功: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        <h2 style="color: #2ecc71;">API 自动化测试构建成功</h2>
+                        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+                            <tr><td style="background-color: #f2f2f2;"><b>项目名称</b></td><td>${env.JOB_NAME}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>构建编号</b></td><td>${env.BUILD_NUMBER}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>Git 提交</b></td><td>${env.GIT_COMMIT?.take(7)}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>构建时长</b></td><td>${currentBuild.durationString}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>Allure 报告</b></td><td><a href="${env.BUILD_URL}allure/">点击查看详细报告</a></td></tr>
+                        </table>
+                        <p>动态测试容器已自动销毁，资源已回收。</p>
+                    """,
+                    to: "${EMAIL_RECIPIENTS}",
+                    mimeType: 'text/html'
+                )
+            }
+        }
+        
+        // --------------------------------------------------
+        // 失败时：发送钉钉通知 + 邮件（更高优先级告警）
+        // --------------------------------------------------
+        failure {
+            script {
+                // 1. 钉钉失败通知（@所有人）
+                dingtalk(
+                    robot: "${DINGDING_CREDENTIALS}",
+                    type: 'MARKDOWN',
+                    title: "❌ 构建失败: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    atAll: true,  // 失败时 @所有人
+                    text: [
+                        "### ⚠️ API 自动化测试构建失败",
+                        "---",
+                        "**项目**: ${env.JOB_NAME}",
+                        "**构建号**: ${env.BUILD_NUMBER}",
+                        "**失败阶段**: ${env.STAGE_NAME}",
+                        "**Git 提交**: ${env.GIT_COMMIT?.take(7)}",
+                        "**查看详情**: [控制台日志](${env.BUILD_URL}console)",
+                        "---",
+                        "🔴 请立即检查代码或联系 DevOps 工程师"
+                    ].join("\n")
+                )
+                
+                // 2. 邮件失败通知
+                emailext(
+                    subject: "❌ 构建失败: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        <h2 style="color: #e74c3c;">API 自动化测试构建失败</h2>
+                        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+                            <tr><td style="background-color: #f2f2f2;"><b>项目名称</b></td><td>${env.JOB_NAME}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>构建编号</b></td><td>${env.BUILD_NUMBER}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>失败阶段</b></td><td>${env.STAGE_NAME}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>错误日志</b></td><td><a href="${env.BUILD_URL}console">点击查看控制台</a></td></tr>
+                        </table>
+                        <p style="color: #c0392b;"><b>动态容器已销毁，需手动重跑构建调试。</b></p>
+                    """,
+                    to: "${EMAIL_RECIPIENTS}",
+                    mimeType: 'text/html'
+                )
+            }
+        }
+        
+        unstable {
+            echo "⚠️ 构建状态不稳定（有测试用例失败但未阻断流水线）"
+        }
+    }
+}
+```
+
+##### 5. 启动操作手册
+
+###### 1. WSL2 环境确认
+
+```bash
+# 进入 WSL2（Ubuntu/Debian）
+wsl
+
+# 确认 Docker Desktop 后端已启动
+sudo docker info
+
+# 创建环境变量文件（安全起见，不直接写入 compose）
+cd /mnt/c/Users/16531/Desktop/selenium-learning/jenkins
+cat > .env <<EOF
+GITEE_USER=你的Gitee用户名
+GITEE_PASS=你的Gitee密码或私人令牌
+EMAIL_USER=你的QQ邮箱@qq.com
+EMAIL_PASSWORD=你的邮箱授权码（非登录密码）
+DINGDING_TOKEN=你的钉钉机器人Token（一串字符）
+EOF
+```
+
+###### 2. 构建并启动 Jenkins
+
+```bash
+# 在 jenkins/ 目录下
+docker-compose up -d --build
+
+# 查看启动日志（等待"Jenkins is fully up and running"）
+docker-compose logs -f jenkins
+
+# 首次启动后，访问 http://localhost:8080
+# 如果用了 SetupWizard=false，直接就能用；否则查看密码：
+# docker exec jenkins-master-cicd cat /var/jenkins_home/secrets/initialAdminPassword
+```
+
+###### 3. 在 Jenkins 中配置凭证（首次）
+
+虽然 jenkins.yaml 尝试自动配置，但首次建议手动验证：
+
+1. 访问 http://localhost:8080
+2. Manage Jenkins → Manage Credentials → System → Global credentials
+3. 添加以下凭证：
+   ID: gitee-credentials：Username with password，填 Gitee 账号
+   ID: dingding-token：Secret text，填钉钉机器人 Token
+
+###### 4. 创建 Pipeline 任务
+
+1. New Item → 名称 `API-Automation-Pipeline` → 选择 Pipeline
+2. Pipeline 配置：
+   - Definition: Pipeline script from SCM
+   - SCM: Git
+   - Repository URL: `https://gitee.com/yourusername/selenium-learning.git`
+   - Credentials: 选择 `gitee-credentials`
+   - Branch Specifier: `*/main`（或 `*/master`）
+   - Script Path: `Jenkinsfile`（位于根目录）
+3. 保存后点击 Build Now
+
+##### 6. 数据传递机制详解
+
+本方案的数据流：
+
+```bash
+Gitee 远程仓库
+    ↓ (Git Clone)
+Jenkins Master 工作空间 (/var/jenkins_home/workspace/API-Automation-Pipeline)
+    ↓ (Bind Mount: -v ${WORKSPACE}:/workspace)
+Dynamic Container (/workspace)
+    ↓ (执行 pytest)
+Allure 结果写入 /workspace/API_Project/report/allure-results
+    ↓ (挂载自动同步回 Master)
+Jenkins Master 本地目录已有结果
+    ↓ (Allure Plugin 读取)
+生成可视化报告 → 发送通知
+```
+
+**优势**：全程无需显式 `cp` 或 `stash` 步骤，利用 Linux 的 bind mount 机制，数据在宿主机与容器间实时同步，**最快最稳最标准**。
+
+##### 7. 钉钉机器人配置指南
+
+1. 钉钉群 → **群设置 → 智能群助手 → 添加机器人 → 自定义（通过 Webhook 接入）**
+2. 设置：
+   - 机器人名字：`Jenkins-CI`
+   - 安全设置：**加签**（推荐）或 **IP 地址（段）**
+   - 记录 Webhook 地址中的 Token（如 `https://oapi.dingtalk.com/robot/send?access_token=xxxx` 的 xxxx 部分）
+3. 将 Token 填入 Jenkins 凭证 ID `dingding-token`
 

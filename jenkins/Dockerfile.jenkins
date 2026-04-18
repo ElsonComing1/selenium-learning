@@ -1,0 +1,59 @@
+# ==========================================
+# 文件名：jenkins/Dockerfile.jenkins
+# 用途：预配置 Jenkins，含国内源、预装插件
+# ==========================================
+FROM jenkins/jenkins:lts-jdk17
+# FROM 指定接触镜像; 空间名/仓库名; lts:long trem support; jdk17 标签后缀   （一层）
+# 不是latest而是lts是因为最新开发版本不稳定
+
+USER root
+# USER用户切换 root超级用户；当前安装环境需要，当环境安装完毕，需要切换回去。 （一层）
+# 因为jenkins镜像的默认用户是jenkins改用户没有权限执行apt-get install
+
+# 更换 Debian 源为阿里云（构建镜像时加速）
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release \
+        # 安装 Docker CLI（用于控制宿主机 Docker）
+        docker.io && \
+    rm -rf /var/lib/apt/lists/*
+# 第一个debian是主软件源，第二个security是安全更新源，均需要更新为国内的阿里云，不然下载速度差异大，还是很慢
+# apt-get update作用是更新搜索路径；如果只是换源，不更新搜索路径，执行下载，其速度还是很慢。
+# 也就是说，当换源后，就需要进行下载搜索路径更新，使其换源生效。
+# 安装ca-certificates是为了能够访问https://协议网址
+# gnupg是为了校验软件包的数字签名，验证使用的是否是正版软件
+# lsb-release 自动系统版本识别，用于选择正确的仓库
+# curl http命令行客户端，用于消灾GPG公钥，测试网络、调用API
+# docker.io docker引擎客户端，服务端是desktop docker，通过socket通信，使其指令有效在容器内运行Docker命令，实现Docker-outside-of-Docker
+# 删除软件包索引数据库
+
+# 预装 Jenkins 插件（使用国内清华源）
+COPY --chown=jenkins:jenkins casc_configs/plugins.txt /usr/share/jenkins/ref/plugins.txt
+# 复制指定文件到指定镜像中，且指定所有者和用户组
+
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt \
+    --jenkins-update-center https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
+# jenkins-plugin-cli插件安装命令行工具；--plugin-file指定插件列表文件；--jenkins-update-center 换源
+# 目的：为了不在首次进入时耗费更多时间安装，所以直接镜像安装。且更快。
+
+
+# 加载 Configuration as Code 配置
+ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
+# ENV设置环境变量，高速jenkins，我的配置都在这个路径的yaml文件下，加载时使用这个，而不使用默认UI配置
+COPY --chown=jenkins:jenkins casc_configs/jenkins.yaml /var/jenkins_home/casc_configs/jenkins.yaml
+# 将windows下写好的配置文件直接整如镜像
+
+# 确保目录权限正确
+RUN chown -R jenkins:jenkins /var/jenkins_home
+# 确保该路径下的全部内容的所有者和用户组都是jenkins:jenkins
+# jenkins的主目录是/var/jenkins_home
+
+USER jenkins
+# 再次切回非特权用户jenkins;目的为了安全，避免不发份子利用
+
+# 构建指令，需要进入C:\Users\16531\Desktop\selenium-learning\jenkins；然后执行docker build -f Dockerfile.jenkins -t 镜像名（可以相同）:标签名（不能相同） .(构建路径)
