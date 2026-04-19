@@ -11,17 +11,27 @@ USER root
 # 因为jenkins镜像的默认用户是jenkins改用户没有权限执行apt-get install
 
 # 更换 Debian 源为阿里云（构建镜像时加速）
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+# 更换 Debian 源为阿里云（兼容 Debian 11/12）
+RUN if [ -f /etc/apt/sources.list ]; then \
+        # Debian 11 及更早版本
+        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
+    fi && \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        # Debian 12+ 新版本
+        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
+    fi && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         gnupg \
         lsb-release \
-        # 安装 Docker CLI（用于控制宿主机 Docker）
         docker.io && \
     rm -rf /var/lib/apt/lists/*
+    # 安装 Docker CLI（用于控制宿主机 Docker）
+
 # 第一个debian是主软件源，第二个security是安全更新源，均需要更新为国内的阿里云，不然下载速度差异大，还是很慢
 # apt-get update作用是更新搜索路径；如果只是换源，不更新搜索路径，执行下载，其速度还是很慢。
 # 也就是说，当换源后，就需要进行下载搜索路径更新，使其换源生效。
@@ -37,7 +47,7 @@ COPY --chown=jenkins:jenkins casc_configs/plugins.txt /usr/share/jenkins/ref/plu
 # 复制指定文件到指定镜像中，且指定所有者和用户组
 
 RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt \
-    --jenkins-update-center https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
+    --jenkins-update-center https://mirrors.huaweicloud.com/jenkins/updates/update-center.json
 # jenkins-plugin-cli插件安装命令行工具；--plugin-file指定插件列表文件；--jenkins-update-center 换源
 # 目的：为了不在首次进入时耗费更多时间安装，所以直接镜像安装。且更快。
 

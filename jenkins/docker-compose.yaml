@@ -1,0 +1,60 @@
+# ==========================================
+# 文件名：jenkins/docker-compose.yml
+# 用途：一键部署完整 Jenkins 环境
+# ==========================================
+version: "3.8"
+
+services:
+  jenkins:
+    build:
+      context: .	# 构建上下文，指定为当前目录
+      dockerfile: Dockerfile.jenkins	# 前面写好的dockerfile来构建镜像
+    container_name: jenkins-master-cicd		# 构建后的容器名称
+    user: root  # jenkins需要 root 权限操作 docker.sock
+    restart: unless-stopped	# 除非手动，崩溃或者宿主机重启后自动重启
+    privileged: true  # 必须，用于访问 Docker 引擎，特权模式，允许容器访问宿主机设备文件
+    
+    ports:
+      - "8080:8080"		# jenkins web ui
+      - "50000:50000"		# JNLP Agent 通信；本方案用动态容器（Docker Agent）而非 JNLP Agent，这个端口实际不会用到，但保留是最佳实践
+    
+    environment:
+      # 跳过安装向导（生产环境建议首次启动后注释掉），配合JCasC实现开箱即用
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      # 传递凭证环境变量（更安全的方式是用 Docker Secrets）
+      # 从宿主机.env文件获取值，如果没有定义，则默认认为空字符串:-后面的值，shell参数扩展
+      - GITEE_USER=${GITEE_USER:-}
+      - GITEE_PASS=${GITEE_PASS:-}
+      - EMAIL_USER=${EMAIL_USER:-}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+      - DINGDING_TOKEN=${DINGDING_TOKEN:-}
+    
+    volumes:
+      # Jenkins 数据持久化
+      - jenkins_home:/var/jenkins_home
+      # 保存Jekins所有配置、插件、构建历史、凭证。容器删除后数据不丢失。实际存储在WSL2的/var/lib/docker/volumes/jenkins_home/_data
+      # 是命名卷，给个名字就可以了。其他卷是绑定挂在
+      
+      # ★ 核心关键：Docker 操控通道（兄弟容器模式）
+      - /var/run/docker.sock:/var/run/docker.sock
+      # jenkins容器内的进程通过这个socket文件，向宿主机的Docker引擎发送命令。
+      # 在Jenkins pipeline中执行docker build等，实际是在宿主机上创建兄弟容器，而不是在jenkins容器中嵌套创建。
+      
+      # 挂载宿主机 Docker 二进制文件（WSL2 路径）
+      - /usr/bin/docker:/usr/bin/docker:ro
+      # 由于jenkins中没有docker命令，所以将其挂在进去。
+      
+      # 挂载本地时区文件
+      - /etc/localtime:/etc/localtime:ro
+      # 让jenkins容器的时间同步wsl
+    
+    # 确保 Jenkins 用户有权限操作 Docker
+    group_add:
+      - docker
+      # 将jenkins容器中root用户添加到宿主机的docker用户组
+      # 虽然 privileged: true 已经给了特权，但显式加入 docker 组可以确保对 /var/run/docker.sock 的访问权限在某些严格 SELinux/AppArmor 环境下也生效
+
+volumes:
+  jenkins_home:
+    driver: local
+    # 使用 Docker 本地卷驱动创建 jenkins_home 卷；除非你执行 docker volume rm jenkins_home

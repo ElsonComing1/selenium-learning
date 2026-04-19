@@ -2865,6 +2865,7 @@ volumes:
 # 用途：极速构建的测试运行环境（全链路国内源）
 # ==========================================
 FROM python:3.12-slim
+# python:3.12-slim是安装精简版
 
 # 更换 Debian 源为阿里云镜像（构建速度提升 10 倍）
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
@@ -2877,6 +2878,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+# WORKDIR 如果切换目录不存在会生成目录同时切入作为当前工作目录
 
 # 先复制依赖文件，利用 Docker 缓存层
 COPY requirements.txt .
@@ -2893,9 +2895,50 @@ RUN mkdir -p /app/report/allure-results
 
 # 默认入口（会被 Jenkins Pipeline 覆盖）
 CMD ["pytest", "--version"]
+# 容器启动后的默认命令;用于显示是否安装成功
 ```
 
 ##### 4. 核心流水线（Jenkinsfile）
+
+###### 1. pipeline 流程
+
+```bash
+1. 提交代码到 Gitee
+        ↓
+        
+2. 触发 Jenkins（手动 Build Now / Gitee Webhook / 定时触发）
+        ↓
+        
+3. Jenkins git clone 到本地工作空间(jenkins容器的工作空间：/var/jenkins_home/workspace/创建jenkins容器后固有的路径)
+   路径：/var/jenkins_home/workspace/API-Automation-Pipeline/（API-Automation-Pipeline是项目名称；只会复制git仓库名下的内容至，jenkins项目名下）
+        ↓
+        
+4. 构建测试镜像
+   Jenkins 容器内执行 docker build → 通过 docker.sock（docker使用权） 调用 WSL2 Docker Engine（来源Desktop docker）
+   构建上下文：workspace/API-Automation-Pipeline/content/API_Project/
+        ↓
+        
+5. 运行动态测试容器
+   docker run --rm -v ${WORKSPACE}:/workspace ...
+   挂载后容器内路径：/workspace/content/API_Project/
+   执行 pytest ...
+        ↓
+        
+6. 测试完毕，Allure 结果 JSON 文件
+   写入：/workspace/content/API_Project/report/allure-results/
+   因为挂载，宿主机（Jenkins）同步看到结果
+        ↓
+        
+7. Jenkins Allure 插件读取结果，生成 HTML 报告
+   你在 Jenkins UI 点击 "Allure Report" 查看
+        ↓
+        
+8. 钉钉 + 邮件通知（success / failure）
+```
+
+
+
+###### 2. 实现流程
 
 ```groovy
 // ==========================================
@@ -2904,8 +2947,9 @@ CMD ["pytest", "--version"]
 // ==========================================
 
 pipeline {
-    // 使用 any 即可，因为我们手动控制 Docker 容器
+    // 使用 any 即可，因为我们手动控制 Docker 容器;在jenkins中手动构建容器。使用时才需要
     agent any
+    
     
     environment {
         // 镜像与容器命名（带构建号隔离，防止并发冲突）
@@ -2935,14 +2979,14 @@ pipeline {
         // --------------------------------------------------
         // Stage 1: 从 Gitee 拉取最新代码
         // --------------------------------------------------
-        stage('Checkout from Gitee') {
+        stage('Checkout from Gitee') {	// 阶段标题/名称，显示在UI的stage view中
             steps {
                 script {
                     echo ">>> 正在从 Gitee 拉取代码..."
                     
                     // 方式 A：使用预存凭证（推荐）
                     git(
-                        url: 'https://gitee.com/yourusername/selenium-learning.git',  // ★ 修改为你的仓库地址
+                        url: 'https://gitee.com/ElsonComing1/selenium-learning.git',  // ★ 修改为你的仓库地址
                         branch: 'main',  // 或 master
                         credentialsId: "${GITEE_CREDENTIALS}"
                     )
@@ -2951,6 +2995,7 @@ pipeline {
                     // git url: 'https://gitee.com/yourname/selenium-learning.git', branch: 'main'
                     
                     echo ">>> 代码拉取完成，当前提交: ${sh(returnStdout: true, script: 'git log -1 --pretty=format:"%h %s"').trim()}"
+                    // sh(参数，指令) ，返回git log最新一条指令
                 }
             }
         }
@@ -2961,7 +3006,7 @@ pipeline {
         stage('Build Test Image') {
             steps {
                 script {
-                    dir('API_Project') {
+                    dir('content/API_Project') {
                         echo ">>> 正在构建测试镜像: ${TEST_IMAGE}"
                         
                         // 使用宿主机的 Docker（通过 docker.sock）
@@ -2972,7 +3017,7 @@ pipeline {
                                 -f Dockerfile.test \
                                 .
                         """
-                        
+                        // --build-arg key=value向dockerfile传递构件式变量，只在构建时生效，不会留在运行环境中。
                         echo ">>> 镜像构建完成"
                     }
                 }
@@ -2987,7 +3032,7 @@ pipeline {
                 script {
                     echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
                     
-                    // ★ 核心机制：将 Jenkins Workspace（含刚拉取的代码）挂载进容器
+                    // ★ 核心机制：将 Jenkins Workspace（含刚拉取的代码）挂载进当前容器
                     // 这样容器内 /workspace 就是最新代码，无需 stash/unstash
                     // 同时挂载 report 目录用于收集 Allure 结果
                     
@@ -3004,11 +3049,11 @@ pipeline {
                         docker run --rm \
                             --name ${TEST_CONTAINER} \
                             -v "${WORKSPACE}:/workspace:rw" \
-                            -w /workspace/API_Project \
-                            -e PYTHONPATH=/workspace/API_Project \
+                            -w /workspace/content/API_Project \
+                            -e PYTHONPATH=/workspace/content/API_Project \
                             ${TEST_IMAGE} \
-                            pytest prepare_works/ testcases/ -v \
-                                --alluredir=/workspace/API_Project/report/allure-results \
+                            pytest testcases/ -v \
+                                --alluredir=/workspace/content/API_Project/report --clean-alluredir --env=production --env-file=config/env_settings.yaml
                                 --tb=short \
                                 -rA
                     """
@@ -3027,7 +3072,7 @@ pipeline {
                     echo ">>> 生成 Allure 报告..."
                     
                     // 检查 Allure 结果是否存在
-                    def allureDir = 'API_Project/report/allure-results'
+                    def allureDir = 'content/API_Project/report/allure-results'
                     def resultsExist = sh(returnStatus: true, script: "test -d ${allureDir} && test \"\\$(ls -A ${allureDir})\"")
                     
                     if (resultsExist == 0) {
@@ -3070,7 +3115,7 @@ pipeline {
                         [pattern: '**/__pycache__/**', type: 'INCLUDE'],
                         [pattern: '**/.pytest_cache/**', type: 'INCLUDE'],
                         [pattern: '**/*.pyc', type: 'INCLUDE'],
-                        [pattern: 'API_Project/report/allure-results/**', type: 'EXCLUDE']  // 保留结果
+                        [pattern: 'content/API_Project/report/allure-results/**', type: 'EXCLUDE']  // 保留结果
                     ]
                 )
             }
@@ -3169,6 +3214,8 @@ pipeline {
     }
 }
 ```
+
+
 
 ##### 5. 启动操作手册
 

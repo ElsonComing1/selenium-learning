@@ -1,0 +1,37 @@
+# ==========================================
+# 文件名：API_Project/Dockerfile.test
+# 用途：极速构建的测试运行环境（全链路国内源）
+# ==========================================
+FROM python:3.12-slim
+# python:3.12-slim是安装精简版
+
+# 更换 Debian 源为阿里云镜像（构建速度提升 10 倍）
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+
+# 安装编译依赖（如需 Chrome 可在此扩展）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+# WORKDIR 如果切换目录不存在会生成目录同时切入作为当前工作目录
+
+# 先复制依赖文件，利用 Docker 缓存层
+COPY requirements.txt .
+
+# 使用清华 PyPI 镜像安装依赖（避免国外源超时）
+ARG PIP_INDEX_URL=https://pypi.org/simple  # 定义构建参数，带默认值
+RUN pip install --no-cache-dir -i ${PIP_INDEX_URL} \
+    -r requirements.txt
+
+# 复制项目源码（由 Jenkins 在构建时注入，此处仅为完整性）
+COPY . .
+
+# 创建报告目录
+RUN mkdir -p /app/report/allure-results
+
+# 默认入口（会被 Jenkins Pipeline 覆盖）
+CMD ["pytest", "--version"]
+# 容器启动后的默认命令;用于显示是否安装成功
