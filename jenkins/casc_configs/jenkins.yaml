@@ -10,7 +10,7 @@ jenkins:
   updateCenter:
     sites:
       - id: default
-        url: https://mirrors.cloud.tencent.com/jenkins/updates/update-center.json
+        url: https://mirrors.cloud.tencent.com/jenkins/updates/update-center.json 
   
   # 时区设置
   globalNodeProperties:
@@ -23,20 +23,23 @@ jenkins:
 # 非核心系统配置（必须放在 unclassified 下）
 # ==========================================
 unclassified:
-  # 邮件服务器配置（邮件通知插件）
+  # 基础邮件配置（Mailer 插件）
   mailer:
-    smtpServer: smtp.qq.com
-    smtpPort: 465
+    smtpHost: smtp.qq.com
+    smtpPort: "465"              # 注意：必须是字符串
     useSsl: true
+    charset: "UTF-8"
     defaultSuffix: "@qq.com"
+    replyToAddress: "1653195118@qq.com"
     authentication:
       username: ${EMAIL_USER}
       password: ${EMAIL_PASSWORD}
 
   # 扩展邮件配置（Email Extension 插件）
-  extendedEmail:
+  # 注意：JCasC 中键名是 email-ext，不是 extendedEmail
+  email-ext:
     smtpServer: smtp.qq.com
-    smtpPort: 465
+    smtpPort: "465"
     useSsl: true
     defaultContentType: text/html
     defaultSubject: "构建通知: $PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS!"
@@ -48,22 +51,19 @@ unclassified:
       <p>控制台日志: <a href="${BUILD_URL}console">点击查看</a></p>
 
 # ==========================================
-# 凭证配置（根级别，与 jenkins 同级）
+# 凭证配置（根级别）
 # ==========================================
 credentials:
   system:
     domainCredentials:
-      - credentials:
-          # Gitee 账号密码凭证（ID: gitee-credentials）
-          - usernamePassword:
-              scope: GLOBAL
-              id: gitee-credentials
-              username: ${GITEE_USER}
-              password: ${GITEE_PASS}
-              description: Gitee 代码仓库凭证
-          # 钉钉 Webhook Token（ID: dingding-token）
-          - string:
-              scope: GLOBAL
-              id: dingding-token
-              secret: ${DINGDING_TOKEN}
-              description: 钉钉机器人 Token
+      - usernamePassword:        # 注意：直接是凭证项，不需要 - credentials: 这一层
+          scope: GLOBAL
+          id: gitee-credentials
+          username: ${GITEE_USER}
+          password: ${GITEE_PASS}
+          description: Gitee 代码仓库凭证
+      - string:
+          scope: GLOBAL
+          id: dingding-token
+          secret: ${DINGDING_TOKEN}
+          description: 钉钉机器人 Token

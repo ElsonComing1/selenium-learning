@@ -53,9 +53,9 @@ RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt \
 
 
 # 加载 Configuration as Code 配置
-ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
+# ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
 # ENV设置环境变量，高速jenkins，我的配置都在这个路径的yaml文件下，加载时使用这个，而不使用默认UI配置
-COPY --chown=jenkins:jenkins casc_configs/jenkins.yaml /var/jenkins_home/casc_configs/jenkins.yaml
+# COPY --chown=jenkins:jenkins casc_configs/jenkins.yaml /var/jenkins_home/casc_configs/jenkins.yaml
 # 将windows下写好的配置文件直接整如镜像
 
 # 确保目录权限正确
