@@ -184,7 +184,7 @@ pipeline {
             script {
                 // 1. 钉钉通知
                 dingtalk(
-                    robot: "${DINGDING_CREDENTIALS}",  // 使用凭证 ID
+                    robot: "DINGDING_CREDENTIALS",  // 使用凭证 ID
                     type: 'MARKDOWN',
                     title: "✅ 构建成功: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     text: [
@@ -228,7 +228,7 @@ pipeline {
             script {
                 // 1. 钉钉失败通知（@所有人）
                 dingtalk(
-                    robot: "${DINGDING_CREDENTIALS}",
+                    robot: "DINGDING_CREDENTIALS",
                     type: 'MARKDOWN',
                     title: "❌ 构建失败: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     atAll: true,  // 失败时 @所有人
