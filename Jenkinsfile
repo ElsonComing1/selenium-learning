@@ -107,10 +107,11 @@ pipeline {
                             -w /workspace/content/API_Project \
                             -e PYTHONPATH=/workspace/content/API_Project \
                             ${TEST_IMAGE} \
-                            pytest prepare_works/ testcases/ -v \
+                            pytest  testcases/ -v \
                                 --alluredir=/workspace/content/API_Project/report/allure-results \
                                 --tb=short \
-                                -rA
+                                -rA \
+                                --env=production --env-file=config/env_settings.yaml
                     """
                     
                     echo ">>> 动态容器执行完毕"
