@@ -104,16 +104,17 @@ pipeline {
                         # --volumes-from: 也可继承数据卷，但直接挂载更清晰
                         
                         docker run --rm \
-                            --name ${TEST_CONTAINER} \
-                            -v jenkins_home:/workspace:rw \
-                            -w /workspace/content/API_Project \
-                            -e PYTHONPATH=/workspace/content/API_Project \
-                            ${TEST_IMAGE} \
-                            pytest  testcases/ -v \
-                                --alluredir=/workspace/content/API_Project/report/allure-results \
-                                --tb=short \
-                                -rA \
-                                --env=production --env-file=config/env_settings.yaml
+                        --name ${TEST_CONTAINER} \
+                        -v jenkins_home:/var/jenkins_home:rw \
+                        -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                        -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                        ${TEST_IMAGE} \
+                        pytest testcases/ -v \
+                            --alluredir=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project/report/allure-results \
+                            --tb=short \
+                            -rA \
+                            --env=production \
+                            --env-file=config/env_settings.yaml
                     """
                     
                     echo ">>> 动态容器执行完毕"
