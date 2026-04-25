@@ -89,9 +89,9 @@ pipeline {
                 script {
                     echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
                     
-                    ★ 核心机制：将 Jenkins Workspace（含刚拉取的代码）挂载进当前容器
-                    这样容器内 /workspace 就是最新代码，无需 stash/unstash
-                    同时挂载 report 目录用于收集 Allure 结果
+                    // ★ 核心机制：将 Jenkins Workspace（含刚拉取的代码）挂载进当前容器
+                    // 这样容器内 /workspace 就是最新代码，无需 stash/unstash
+                    // 同时挂载 report 目录用于收集 Allure 结果
                     
                     sh """
                         # 清理可能存在的同名容器（防御性编程）
