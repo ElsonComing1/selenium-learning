@@ -89,61 +89,32 @@ pipeline {
                 script {
                     echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
                     
-                    // ★ 核心机制：将 Jenkins Workspace（含刚拉取的代码）挂载进当前容器
-                    // 这样容器内 /workspace 就是最新代码，无需 stash/unstash
-                    // 同时挂载 report 目录用于收集 Allure 结果
+                    ★ 核心机制：将 Jenkins Workspace（含刚拉取的代码）挂载进当前容器
+                    这样容器内 /workspace 就是最新代码，无需 stash/unstash
+                    同时挂载 report 目录用于收集 Allure 结果
                     
-                    // sh """
-                    //     # 清理可能存在的同名容器（防御性编程）
-                    //     docker rm -f ${TEST_CONTAINER} || true
-                        
-                    //     # 运行动态容器：
-                    //     # --rm: 停止后自动删除（真正"用完即走"）
-                    //     # -v ${WORKSPACE}:/workspace: 将 Jenkins 工作空间挂载到容器内
-                    //     # -w /workspace/API_Project: 设置工作目录到测试项目
-                    //     # --volumes-from: 也可继承数据卷，但直接挂载更清晰
-                        
-                    //     docker run --rm \
-                    //         --name ${TEST_CONTAINER} \
-                    //         -v "${WORKSPACE}:/workspace:rw" \
-                    //         -w /workspace/content/API_Project \
-                    //         -e PYTHONPATH=/workspace/content/API_Project \
-                    //         ${TEST_IMAGE} \
-                    //         pytest  testcases/ -v \
-                    //             --alluredir=/workspace/content/API_Project/report/allure-results \
-                    //             --tb=short \
-                    //             -rA \
-                    //             --env=production --env-file=config/env_settings.yaml
-                    // """
-
                     sh """
-                docker rm -f ${TEST_CONTAINER} || true
-                
-                docker run --rm \
-                    --name ${TEST_CONTAINER} \
-                    -v "${WORKSPACE}:/workspace:rw" \
-                    -w /workspace/content/API_Project \
-                    -e PYTHONPATH=/workspace/content/API_Project \
-                    ${TEST_IMAGE} \
-                    sh -c '
-                        echo "=== 1. 检查 conftest.py 是否存在 ==="
-                        ls -la conftest.py || echo "❌ conftest.py 不存在"
+                        # 清理可能存在的同名容器（防御性编程）
+                        docker rm -f ${TEST_CONTAINER} || true
                         
-                        echo "=== 2. 检查 conftest.py 内容 ==="
-                        grep -n "def pytest" conftest.py || echo "❌ 找不到 pytest 函数"
+                        # 运行动态容器：
+                        # --rm: 停止后自动删除（真正"用完即走"）
+                        # -v ${WORKSPACE}:/workspace: 将 Jenkins 工作空间挂载到容器内
+                        # -w /workspace/API_Project: 设置工作目录到测试项目
+                        # --volumes-from: 也可继承数据卷，但直接挂载更清晰
                         
-                        echo "=== 3. 测试 pytest 是否识别参数 ==="
-                        pytest --help | grep -E "env|env-file" || echo "❌ 参数未注册"
-                        
-                        echo "=== 4. 执行测试 ==="
-                        pytest testcases/ -v \
-                            --alluredir=/workspace/content/API_Project/report/allure-results \
-                            --tb=short \
-                            -rA \
-                            --env=production \
-                            --env-file=config/env_settings.yaml
-                    '
-            """
+                        docker run --rm \
+                            --name ${TEST_CONTAINER} \
+                            -v jenkins_home:/workspace:rw \
+                            -w /workspace/content/API_Project \
+                            -e PYTHONPATH=/workspace/content/API_Project \
+                            ${TEST_IMAGE} \
+                            pytest  testcases/ -v \
+                                --alluredir=/workspace/content/API_Project/report/allure-results \
+                                --tb=short \
+                                -rA \
+                                --env=production --env-file=config/env_settings.yaml
+                    """
                     
                     echo ">>> 动态容器执行完毕"
                 }
