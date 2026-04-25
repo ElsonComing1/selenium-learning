@@ -128,7 +128,7 @@ pipeline {
                     
                     // 检查 Allure 结果是否存在
                     def allureDir = 'content/API_Project/report/allure-results'
-                    def resultsExist = sh(returnStatus: true, script: "test -d ${allureDir} && test \"\\$(ls -A ${allureDir})\"")
+                    def resultsExist = sh(returnStatus: true, script: "find ${allureDir} -type f 2>/dev/null | grep -q .")
                     
                     if (resultsExist == 0) {
                         echo ">>> 发现 Allure 结果，生成报告..."
