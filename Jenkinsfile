@@ -37,6 +37,8 @@ pipeline {
         // --------------------------------------------------
         stage('Checkout from Gitee') {
             steps {
+                // 每次构建前强制清理旧工作空间，确保拉取最新代码
+                cleanWs()
                 script {
                     echo ">>> 正在从 Gitee 拉取代码..."
                     
