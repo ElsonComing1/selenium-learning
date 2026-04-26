@@ -1,0 +1,3 @@
+[32m2026-04-26 09:32:23[0m | [1mINFO [0m | [36mbase_api       [0m | __init__             | BaseApi初始化完成，目标: http://httpbin.org
+[32m2026-04-26 09:32:23[0m | [34m[1mDEBUG[0m | [36mbase_api       [0m | set_auth_token       | Token已设置: test-token...
+[32m2026-04-26 09:32:23[0m | [34m[1mDEBUG[0m | [36mbase_api       [0m | _request             | [HTTP] GET http://httpbin.org/headers

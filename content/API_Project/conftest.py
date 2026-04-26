@@ -2,8 +2,15 @@
 # 钩子函数需要放在fixture之前
 # 添加自定义参数
 import pytest
+import sys
+import warnings
+from pathlib import Path
 
 
+# ==========================================
+# 必须最先定义：pytest 命令行参数注册
+# 这段代码不能依赖任何本地模块，确保100%加载成功
+# ==========================================
 def pytest_addoption(parser):
     """
     添加命令行选项
@@ -23,17 +30,24 @@ def pytest_addoption(parser):
     )
     # 此钩子函数只用于增加命令行选项；对参数的具体修改需要其伙伴pytest_configure()
 
-
-from config import log
-from core import Config
-import requests
-import sys
-from pathlib import Path
-
+# ==========================================
 # 将 conftest.py 所在目录（即 API_Project）加入 Python 搜索路径
+# 标准库导入，必须放在 try/except 外面，确保一定执行
+# ==========================================
 conftest_dir = str(Path(__file__).parent)
 if conftest_dir not in sys.path:
     sys.path.insert(0, conftest_dir)
+
+try:
+    from config import log
+    from core import Config
+    import requests
+except ImportError as e:
+    warnings.warn(f"业务模块导入延迟加载: {e}", RuntimeWarning)
+    # 占位，防止后续 fixture 引用时 NameError
+    log = None
+    Config = None
+
 
 
 def pytest_configure(config):
@@ -53,16 +67,28 @@ def pytest_configure(config):
         if not os.path.exists(config_file):
             raise FileNotFoundError(f"该文件{config_file}不存在")
 
-    Config.ENV = env
-    Config.FILE = config_file
+    # 安全赋值，防止 Config 导入失败时崩溃
+    if Config is not None:
+        Config.ENV = env
+        Config.FILE = config_file
 
-    # 记录到日志（此时 log 应该已经被导入）
-    log.info(f"pytest_configure完成: 环境={Config.ENV}, 配置文件={Config.FILE}")
+    if log is not None:
+        log.info(f"pytest_configure完成: 环境={env}, 配置文件={config_file}")
 
 
-from api import HttpbinAuthService, HttpbinCoreService
-from utils import common_exception
-
+# ==========================================
+# 后续 fixture 和 hook（如果业务模块未导入，会延迟报错到实际使用时）
+# ==========================================
+try:
+    from api import HttpbinAuthService, HttpbinCoreService
+    from utils import common_exception
+    from utils import Mysql_tool
+    from dotenv import load_dotenv
+    from config import common_varaints as cv
+    import os
+except ImportError as e:
+    warnings.warn(f"扩展模块导入延迟加载: {e}", RuntimeWarning)
+    
 # # 在根目录级别，初始化日志，后面就可以直接使用log
 # setup_logger()
 # 由于在logger.py中，已经调用setup_logger且使用时已经导入log，此处就不再需要setup_logger()

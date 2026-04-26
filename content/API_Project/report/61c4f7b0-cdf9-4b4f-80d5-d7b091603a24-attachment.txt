@@ -1,0 +1,2 @@
+[32m2026-04-26 09:32:21[0m | [1mINFO [0m | [36mhttpbin_service[0m | test_delay           | 测试延迟接口：2秒
+[32m2026-04-26 09:32:21[0m | [34m[1mDEBUG[0m | [36mbase_api       [0m | _request             | [HTTP] GET http://httpbin.org/delay/2
