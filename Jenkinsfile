@@ -61,16 +61,22 @@ pipeline {
         stage('Build Test Image') {
             steps {
                 script {
-                    dir('content/API_Project') {
+                        dir('content/API_Project') {
                         echo ">>> 正在构建测试镜像: ${TEST_IMAGE}"
                         
-                        // 使用宿主机的 Docker（通过 docker.sock）
+                        // --no-cache 强制重新安装依赖，避免缓存导致新包漏装
                         sh """
                             docker build \
+                                --no-cache \
                                 --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
                                 -t ${TEST_IMAGE} \
                                 -f Dockerfile.test \
                                 .
+                        """
+                        
+                        // 铁证校验：镜像内必须有 yaml 模块
+                        sh """
+                            docker run --rm ${TEST_IMAGE} python -c "import yaml; print('PyYAML version:', yaml.__version__)" || { echo "ERROR: 镜像内缺少 PyYAML"; exit 1; }
                         """
                         
                         echo ">>> 镜像构建完成"

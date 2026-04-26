@@ -16,7 +16,8 @@ RUN if [ -f /etc/apt/sources.list ]; then \
     fi
 
 # 安装编译依赖（如需 Chrome 可在此扩展）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# set -e 确保任何命令失败都会中断构建，不会带着残缺的依赖继续
+RUN set -e apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
