@@ -37,8 +37,6 @@ pipeline {
         // --------------------------------------------------
         stage('Checkout from Gitee') {
             steps {
-                // 每次构建前强制清理旧工作空间，确保拉取最新代码
-                cleanWs()
                 script {
                     echo ">>> 正在从 Gitee 拉取代码..."
                     
@@ -183,6 +181,19 @@ pipeline {
     // --------------------------------------------------
     post {
         always {
+            // ✅ 构建结束后安全清理，保留 allure-results 用于报告
+            cleanWs(
+                cleanWhenNotBuilt: false,
+                deleteDirs: true,
+                notFailBuild: true,
+                patterns: [
+                    [pattern: '**/__pycache__/**', type: 'INCLUDE'],
+                    [pattern: '**/.pytest_cache/**', type: 'INCLUDE'],
+                    [pattern: '**/*.pyc', type: 'INCLUDE'],
+                    [pattern: 'content/API_Project/report/allure-results/**', type: 'EXCLUDE']
+                ]
+            )
+
             script {
                 echo ">>> 执行清理任务..."
                 

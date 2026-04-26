@@ -12,9 +12,11 @@ Thumbs.db
 *.swo
 *~
 
-allure-results/*
-report/*
-content/API_Project/config/.env
+# 使用 **/ 通配符（递归匹配所有层级）
+**/logs/
+**/report/
+**/allure-results/
+**/.env
 
-logs/
+
 
