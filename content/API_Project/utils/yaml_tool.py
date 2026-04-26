@@ -16,6 +16,6 @@ class Yaml_tool(object):
     
 
 
-if __name__ == "__main__":
-    yaml_tool=Yaml_tool()
-    yaml_tool.read_yaml_file('config\env_settings.yaml')
+# if __name__ == "__main__":
+#     yaml_tool=Yaml_tool()
+#     yaml_tool.read_yaml_file('config\env_settings.yaml')

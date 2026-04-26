@@ -19,7 +19,7 @@ pipeline {
         DINGDING_CREDENTIALS = 'dingding-token'
         
         // 邮箱接收列表（逗号分隔）
-        EMAIL_RECIPIENTS = '16531@qq.com,manager@company.com'  // 修改为你的邮箱
+        EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com'  // 修改为你的邮箱
     }
     
     options {
@@ -32,37 +32,6 @@ pipeline {
     }
     
     stages {
-        // --------------------------------------------------
-        // Stage 1: 从 Gitee 拉取最新代码
-        // --------------------------------------------------
-        // stage('Checkout from Gitee') {
-        //     steps {
-        //         script {
-        //             echo ">>> 正在从 Gitee 拉取代码..."
-                    
-        //             // 铁证：拉取前打印旧版本
-        //             sh 'git log -1 --pretty=format:"旧版本: %h %s %ci" 2>/dev/null || echo "无 git 历史"'
-
-
-        //             // 方式 A：使用预存凭证（推荐）
-        //             git(
-        //                 url: 'https://gitee.com/ElsonComing1/selenium-learning.git',  // ★ 修改为你的仓库地址
-        //                 branch: 'main',  // 或 master
-        //                 credentialsId: "${GITEE_CREDENTIALS}"
-        //             )
-                    
-        //             // ★ 核心修复：强制同步到远程最新，清除一切本地污染
-        //             sh '''
-        //                 git fetch origin
-        //                 git reset --hard origin/main
-        //                 git clean -fd
-        //                 echo ">>> 强制同步后版本: $(git log -1 --pretty=format:'%h %s')"
-        //             '''
-                    
-        //             echo ">>> 代码拉取完成，当前提交: ${sh(returnStdout: true, script: 'git log -1 --pretty=format:"%h %s"').trim()}"
-        //         }
-        //     }
-        // }
         
         // --------------------------------------------------
         // Stage 2: 构建测试镜像（国内缓存加速）
@@ -114,8 +83,10 @@ pipeline {
                                 --volumes-from jenkins-master-cicd \
                                 -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
                                 -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                                -e LOGURU_COLORIZE=false \       # ← 禁用 loguru 颜色
                                 ${TEST_IMAGE} \
                                 pytest testcases/ -v \
+                                    --color=no \                   # ← 禁用 pytest 颜色
                                     --alluredir=report/allure-results \
                                     --tb=short \
                                     -rA \
