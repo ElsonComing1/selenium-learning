@@ -19,7 +19,7 @@ pipeline {
         DINGDING_CREDENTIALS = 'dingding-token'
         
         // 邮箱接收列表（逗号分隔）
-        EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com'  // 修改为你的邮箱
+        EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com,2567195697@qq.com'  // 修改为你的邮箱
     }
     
     options {
