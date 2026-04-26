@@ -83,10 +83,10 @@ pipeline {
                                 --volumes-from jenkins-master-cicd \
                                 -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
                                 -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                                -e LOGURU_COLORIZE=false \       # ← 禁用 loguru 颜色
+                                -e LOGURU_COLORIZE=false \
                                 ${TEST_IMAGE} \
                                 pytest testcases/ -v \
-                                    --color=no \                   # ← 禁用 pytest 颜色
+                                    --color=no \
                                     --alluredir=report/allure-results \
                                     --tb=short \
                                     -rA \
