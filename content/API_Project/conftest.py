@@ -4,7 +4,52 @@
 import pytest
 import sys
 import warnings
+import os  # 标准库放外面
 from pathlib import Path
+
+# ==========================================
+# 将 conftest.py 所在目录（即 API_Project）加入 Python 搜索路径
+# 标准库导入，必须放在 try/except 外面，确保一定执行
+# ==========================================
+conftest_dir = str(Path(__file__).parent)
+if conftest_dir not in sys.path:
+    sys.path.insert(0, conftest_dir)
+
+
+# ==========================================
+# 2. 统一业务导入（失败时占位，不阻断 pytest）
+# ==========================================
+try:
+    from config import log
+    from core import Config
+    import requests
+    from api import HttpbinAuthService, HttpbinCoreService
+    from utils import common_exception
+    from utils import Mysql_tool
+    from dotenv import load_dotenv
+    from config import common_varaints as cv
+    import allure
+except ImportError as e:
+    warnings.warn(f"业务模块导入延迟加载: {e}", RuntimeWarning)
+    log = None
+    Config = None
+    requests = None
+    HttpbinAuthService = None
+    HttpbinCoreService = None
+    common_exception = None
+    Mysql_tool = None
+    load_dotenv = None
+    cv = None
+    allure = None
+
+
+# ==========================================
+# 3. 安全装饰器（防止 common_exception 导入失败时 @None 炸掉）
+# ==========================================
+if common_exception is None:
+
+    def common_exception(func):
+        return func
 
 
 # ==========================================
@@ -29,25 +74,6 @@ def pytest_addoption(parser):
         help="配置文件路径，默认使用项目根目录下的 config/env_settings.yaml",
     )
     # 此钩子函数只用于增加命令行选项；对参数的具体修改需要其伙伴pytest_configure()
-
-# ==========================================
-# 将 conftest.py 所在目录（即 API_Project）加入 Python 搜索路径
-# 标准库导入，必须放在 try/except 外面，确保一定执行
-# ==========================================
-conftest_dir = str(Path(__file__).parent)
-if conftest_dir not in sys.path:
-    sys.path.insert(0, conftest_dir)
-
-try:
-    from config import log
-    from core import Config
-    import requests
-except ImportError as e:
-    warnings.warn(f"业务模块导入延迟加载: {e}", RuntimeWarning)
-    # 占位，防止后续 fixture 引用时 NameError
-    log = None
-    Config = None
-
 
 
 def pytest_configure(config):
@@ -76,24 +102,12 @@ def pytest_configure(config):
         log.info(f"pytest_configure完成: 环境={env}, 配置文件={config_file}")
 
 
-# ==========================================
-# 后续 fixture 和 hook（如果业务模块未导入，会延迟报错到实际使用时）
-# ==========================================
-try:
-    from api import HttpbinAuthService, HttpbinCoreService
-    from utils import common_exception
-    from utils import Mysql_tool
-    from dotenv import load_dotenv
-    from config import common_varaints as cv
-    import os
-except ImportError as e:
-    warnings.warn(f"扩展模块导入延迟加载: {e}", RuntimeWarning)
-    
 # # 在根目录级别，初始化日志，后面就可以直接使用log
 # setup_logger()
 # 由于在logger.py中，已经调用setup_logger且使用时已经导入log，此处就不再需要setup_logger()
 
-import allure
+
+
 # 测试失败处理
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 # tryfist是确保当有多个pytest_runtest_makereport被调用时，确保当前函数是第一个调用
@@ -155,34 +169,30 @@ def pytest_runtest_makereport(item, call):
                     )
 
 
-from utils import Mysql_tool
-from dotenv import load_dotenv
-from config import common_varaints as cv
-import os
-
 
 @common_exception
 @pytest.fixture(scope="session")
 # 单独写出一个pool，原因是pool对应着会话级别，不需要不断地创建新的pool,不然太麻烦，也失去意义
 def mysql_item():
     if not load_dotenv(dotenv_path=cv.ENV_FILE):
-        log.info('成功加载mysql配置文件：{cv.ENV_FILE}')
+        log.info("成功加载mysql配置文件：{cv.ENV_FILE}")
         raise ValueError(f"该路径{cv.ENV_FILE}下，没能成功加载")
 
-    mysql_item=Mysql_tool(host=os.getenv('DB_HOST'),
-        port=os.getenv('DB_PORT'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        db=os.getenv('DB_NAME'),)
-    log.info('成功创建mysql实例')
+    mysql_item = Mysql_tool(
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        db=os.getenv("DB_NAME"),
+    )
+    log.info("成功创建mysql实例")
     yield mysql_item
     mysql_item.conn.rollback()
-    log.info('成功回滚')
+    log.info("成功回滚")
     mysql_item.close_connect()
-    log.info('成功关闭连接')
+    log.info("成功关闭连接")
     mysql_item.close_pool()
-    log.info('成功关闭mysql pool')
-
+    log.info("成功关闭mysql pool")
 
 
 @common_exception

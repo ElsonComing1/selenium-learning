@@ -85,64 +85,30 @@ pipeline {
         stage('Run Tests in Dynamic Container') {
             steps {
                 script {
-                    echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
-                    
-                    // ★ 核心机制：将 Jenkins Workspace（含刚拉取的代码）挂载进当前容器
-                    // 这样容器内 /workspace 就是最新代码，无需 stash/unstash
-                    // 同时挂载 report 目录用于收集 Allure 结果
-                    
-                    // sh """
-                    //     # 清理可能存在的同名容器（防御性编程）
-                    //     docker rm -f ${TEST_CONTAINER} || true
+                        echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
                         
-                    //     # 运行动态容器：
-                    //     # --rm: 停止后自动删除（真正"用完即走"）
-                    //     # -v ${WORKSPACE}:/workspace: 将 Jenkins 工作空间挂载到容器内
-                    //     # -w /workspace/API_Project: 设置工作目录到测试项目
-                    //     # --volumes-from: 也可继承数据卷，但直接挂载更清晰
-                        
-                    //     docker run --rm \
-                    //     --name ${TEST_CONTAINER} \
-                    //     -v jenkins_home:/var/jenkins_home:rw \
-                    //     -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                    //     -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                    //     ${TEST_IMAGE} \
-                    //     pytest testcases/ -v \
-                    //         --alluredir=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project/report/allure-results \
-                    //         --tb=short \
-                    //         -rA \
-                    //         --env=production \
-                    //         --env-file=config/env_settings.yaml
-                    // """
-
-
-                    sh """
-                        docker rm -f ${TEST_CONTAINER} || true
-                        
-                        docker run --rm \
-                            --name ${TEST_CONTAINER} \
-                            -v jenkins_home:/var/jenkins_home:rw \
-                            -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                            -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                            ${TEST_IMAGE} \
-                            sh -c '
-                                echo "=== 验证 conftest.py 是否是最新版本 ==="
-                                grep -n "sys.path.insert" conftest.py || echo "❌ 还是旧版本（没有 sys.path.insert）"
-                                
-                                echo "=== 测试 import conftest ==="
-                                python -c "import conftest; print(\"✅ conftest 导入成功\")" || echo "❌ conftest 导入失败"
-                                
-                                echo "=== 执行 pytest ==="
+                        sh """
+                            docker rm -f ${TEST_CONTAINER} || true
+                            
+                            echo ">>> [Master] 本地文件铁证:"
+                            ls -la content/API_Project/conftest.py || { echo "ERROR: Master 内无 conftest.py"; exit 1; }
+                            
+                            echo ">>> [Dynamic] 启动容器并执行测试..."
+                            docker run --rm \
+                                --name ${TEST_CONTAINER} \
+                                --volumes-from jenkins-master-cicd \
+                                -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                                -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                                ${TEST_IMAGE} \
                                 pytest testcases/ -v \
-                                    --alluredir=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project/report/allure-results \
+                                    --alluredir=report/allure-results \
                                     --tb=short \
                                     -rA \
                                     --env=production \
                                     --env-file=config/env_settings.yaml
-                            '
-                    """
-                    
-                    echo ">>> 动态容器执行完毕"
+                        """
+                        
+                        echo ">>> 动态容器执行完毕"
                 }
             }
         }
