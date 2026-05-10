@@ -39,24 +39,28 @@ RUN if [ -f /etc/apt/sources.list ]; then \
 # gnupg是为了校验软件包的数字签名，验证使用的是否是正版软件
 # lsb-release 自动系统版本识别，用于选择正确的仓库
 # curl http命令行客户端，用于消灾GPG公钥，测试网络、调用API
-# docker.io docker引擎客户端，服务端是desktop docker，通过socket通信，使其指令有效在容器内运行Docker命令，实现Docker-outside-of-Docker
+# docker.io 是引擎客户端，服务端是desktop docker，jenkins中也能使用docker指令（实际是外部desktopdocker），通过socket通信，使其指令有效在容器内运行Docker命令，实现Docker-outside-of-Docker
 # 删除软件包索引数据库
 
 # 预装 Jenkins 插件（使用国内清华源）
 COPY --chown=jenkins:jenkins casc_configs/plugins.txt /usr/share/jenkins/ref/plugins.txt
 # 复制指定文件到指定镜像中，且指定所有者和用户组
+# /var/jenkins_home由于是基于jenkins镜像构建，所以会存在一些基础目录，且构建镜像时，就已经复制进该路径下，而不是创建容器后
 
 RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt \
     --jenkins-update-center https://mirrors.huaweicloud.com/jenkins/updates/update-center.json
 # jenkins-plugin-cli插件安装命令行工具；--plugin-file指定插件列表文件；--jenkins-update-center 换源
 # 目的：为了不在首次进入时耗费更多时间安装，所以直接镜像安装。且更快。
+# --chown=jenkins:jenkins设置属主和属组，由于当前是root,便于后面在jenkins默认用户下，就能使用该文件
+
 
 
 # 加载 Configuration as Code 配置
 # ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
-# ENV设置环境变量，高速jenkins，我的配置都在这个路径的yaml文件下，加载时使用这个，而不使用默认UI配置
+# ENV设置环境变量，告诉jenkins，我的配置都在这个路径的yaml文件下，加载时使用这个，而不使用默认UI配置
 # COPY --chown=jenkins:jenkins casc_configs/jenkins.yaml /var/jenkins_home/casc_configs/jenkins.yaml
 # 将windows下写好的配置文件直接整如镜像
+
 
 # 确保目录权限正确
 RUN chown -R jenkins:jenkins /var/jenkins_home
@@ -67,3 +71,9 @@ USER jenkins
 # 再次切回非特权用户jenkins;目的为了安全，避免不发份子利用
 
 # 构建指令，需要进入C:\Users\16531\Desktop\selenium-learning\jenkins；然后执行docker build -f Dockerfile.jenkins -t 镜像名（可以相同）:标签名（不能相同） .(构建路径)
+
+# docker run vs docker-compose up -d --build
+# up 启动或者创建定义在yaml里的所有服务，是在docker-compose.yaml所在目录创建构建镜像然后启动。
+# -d detached分离，后台运行
+# --build强制构建；随每次都强制构建，但是不会慢，因为docker有缓存层，只有变化的那层才会开始从新构建。（确保最新）
+# docker-compose直接默认构建，按照docker-compose.yaml的定义直接默认参数构建启动容器，可多次使用，不用重复书写启动容器参数。

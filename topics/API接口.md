@@ -3304,3 +3304,257 @@ Jenkins Master 本地目录已有结果
    - 记录 Webhook 地址中的 Token（如 `https://oapi.dingtalk.com/robot/send?access_token=xxxx` 的 xxxx 部分）
 3. 将 Token 填入 Jenkins 凭证 ID `dingding-token`
 
+#### 5. 部署云服务&Docker
+
+##### 1. 部署云服务
+
+部署云服务目的在于7*24小时永远在线，且用公网IP人人可以访问，可以存储快照等。
+
+###### 1. 免费试用
+
+![](../picturs/17.png)
+
+###### 2. 部署参数配置
+
+| 配置项       | 建议值                          | 原因                       |
+| ------------ | ------------------------------- | -------------------------- |
+| **地域**     | 华东 2（上海）或 华东 1（杭州） | 离你（苏州）最近，延迟最低 |
+| **镜像**     | 保持默认（Docker CE 镜像）      | 预装好的，不要改           |
+| **实例规格** | 2vCPU 4GiB（保持默认）          | 试用给的固定配置           |
+| **数据盘**   | 默认即可                        | Jenkins 数据和日志不大     |
+
+自动续费取决于个人，最后点击立即试用
+
+###### 3. 等待分配
+
+等收到手机短信后，点击前往控制台。
+
+![](../picturs/18.png)
+
+###### 4. 配置成功
+
+记住此图的IP106.14.250.120(公)，后续ssh连接IP需要使用。
+
+![](../picturs/19.png)
+
+###### 5. 重置密码
+
+点击重置密码，设置新密码保存后，记住改密码，后续ssh登录需要该密码。
+
+![](../picturs/20.png)
+
+###### 6. MobaXterm ssh连接阿里云主机
+
+根据*19.png*提到的IP: 106.14.250.120，以及刚才重置的密码，使用MobaXterm的SSH选项，设置user: root进行连接
+
+![](../picturs/21.png)
+
+###### 7. 连接成功
+
+输入之前重置密码，会看见[当前用户@主机名 当前路径]# 指令行
+
+![](../picturs/22.png)
+
+##### 2. 检查阿里云配置
+
+###### 1. 修改主机名
+
+```bash
+[root@iZuf67x785d366ox1ma8amZ ~]# echo "elson-jenkins" > /etc/hostname	# 将新主机名写入主机文件
+[root@iZuf67x785d366ox1ma8amZ ~]# hostname	# 查看主机名，未变化，还未生效
+iZuf67x785d366ox1ma8amZ
+[root@iZuf67x785d366ox1ma8amZ ~]# cat /etc/hostname	# 查看文件是否变化
+elson-jenkins
+[root@iZuf67x785d366ox1ma8amZ ~]# sed -i 's/127.0.1.1.*/127.0.1.1 elson-jenkins/' /etc/hosts	# 匹配源文件替换
+[root@iZuf67x785d366ox1ma8amZ ~]# grep -q "127.0.1.1" /etc/hosts	# 静默匹配，不报错
+[root@iZuf67x785d366ox1ma8amZ ~]# grep -q "127.0.1.1" /etc/hosts || echo "127.0.1.1 elson-jenkins" >> /etc/hosts # 防御性添加
+[root@iZuf67x785d366ox1ma8amZ ~]# cat /etc/hosts # 检查添加是否成功，避免影响sudo响应速度
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+127.0.1.1 elson-jenkins
+[root@iZuf67x785d366ox1ma8amZ ~]# hostname
+iZuf67x785d366ox1ma8amZ
+[root@iZuf67x785d366ox1ma8amZ ~]# hostname $(cat /etc/hostname)	# 立即生效
+[root@iZuf67x785d366ox1ma8amZ ~]# hostname	# 发生变化
+elson-jenkins
+
+```
+
+###### 2. 检查docker
+
+```bash
+[root@iZuf67x785d366ox1ma8amZ ~]# docker --version
+Docker version 26.1.3, build b72abbb
+[root@iZuf67x785d366ox1ma8amZ ~]# docker compose version
+Docker Compose version v2.27.0
+
+```
+
+###### 3. 开放防火墙
+
+阿里云控制台防火墙
+
+###### ![](../picturs/23.png)
+
+服务器本地防火墙
+
+```bash
+iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
+# 在防火墙INPUT链插入一条规则，走TCP协议，端口是8080的链路，一律放行；也就是允许外面访问该url(jenkins web ui：http://106.14.250.120:8080/)
+iptables -I INPUT -p tcp --dport 50000 -j ACCEPT
+service iptables save
+# 立即生效
+iptables -L -n | grep -P "8080|50000"
+# 以数字形式列举出当前所有规则，然后筛选匹配的结果
+```
+
+
+
+##### 3. 数据迁移
+
+数据迁移能够避免再次Jenkins UI配置。将WSL2里的jenkins数据包，搬到云上。
+
+| 理由             | 说明                                                         |
+| ---------------- | ------------------------------------------------------------ |
+| **配置不丢**     | WSL2 里的 Jenkins 已配好插件（Allure、Gitee、DingTalk）、凭证（Gitee/QQ邮箱）、任务（API-Automation-Pipeline）、Allure CLI 工具。迁移后云端**开箱即用**。 |
+| **历史记录保留** | 之前的构建记录、Allure 趋势图、控制台日志全在 `jenkins_home` 里。 |
+| **零重复劳动**   | 不用在云端重新点十几下鼠标装插件、输密码、配 SMTP、建 Pipeline 任务。 |
+
+###### 1. WSL2打包数据
+
+```bash
+# 确保本地wsl的jenkins已经关闭
+dokcer stop jenkins-master-cicd
+# 打包jenkins_home命名数据
+docker run --rm \
+-v jenkins_home:/data \		# 卷挂载，也可以先创建，如果不在，直接运行也会创建卷
+-v /tmp:/backup \
+busybox \
+tar cxvf /backup/jenkins_home_backup.tar.gz -C /data .
+# -v 宿主机路径（建议先创建）或者命名卷（随意，创建是会自己创建卷）:容器路径（docker会自己创建，挂载会导致容器路径被覆盖，因此建议容器路径是不存在的路径）；挂载是宿主机和容器各自一个门，但是指向同一片物理存储空间，均可以读写；实时变化，一端改变另一端也能事实发现变化。
+# busybox是镜像，小快，容器必须是基于镜像创建，该镜像支持linux基操。
+# 执行的指令是在容器下执行，虽是用完即删，但是已经在容器路径下创建内容，且由于挂载的实现，所以宿主机会看见最终结果。
+# 宿主机只能访问宿主机的路径，容器只能访问容器的路径，不能串扰。
+
+# 确认打包成功
+ls -lh /tmp/jenkins_home_backup.tar.gz
+
+```
+
+###### 2. windows项目文件打包
+
+| 文件                                   | 用途                                            |
+| -------------------------------------- | ----------------------------------------------- |
+| `Jenkinsfile`                          | Pipeline 定义（已在 Gitee，但本地备份一份方便） |
+| `content/API_Project/Dockerfile.test`  | 构建测试镜像                                    |
+| `content/API_Project/requirements.txt` | Python 依赖                                     |
+| `jenkins/docker-compose.yaml`          | 云端启动 Jenkins 用                             |
+| `jenkins/Dockerfile.jenkins`           | 备用                                            |
+
+```bash
+# 在 WSL 里执行（Windows 盘符在 /mnt/c/）
+cd /mnt/c/Users/16531/Desktop/selenium-learning
+
+# 打包项目源码（排除日志、缓存、.git）
+tar czvf /tmp/project_files.tar.gz \
+  --exclude='.git' \
+  --exclude='__pycache__' \
+  --exclude='*.pyc' \
+  --exclude='logs/*' \
+  --exclude='report/*' \
+  --exclude='allure-results/*' \
+  Jenkinsfile \
+  content/API_Project/ \
+  jenkins/
+```
+
+打包结果
+
+![](../picturs/24.png)
+
+###### 3. 上传云端（WSL）
+
+使用scp(security copy protocol 安全复制协议)，通过ssh加密通道，将本地文件上传至云端
+
+```bash
+# 传Jenkins数据
+scp /tmp/jenkins_home_backup.tar.gz root@106.14.250.120:/root/
+# 传项目文件
+scp /tmp/project_file.tar.gz root@106.14.250.120:/root/
+```
+
+上传示例：
+
+![](../picturs/25.png)
+
+![](../picturs/26.png)
+
+###### 4. 云端恢复数据（解压）
+
+```bash
+# 解压数据前，需要先创建卷，也可以不创建，run时，会自己创建对应的命名卷
+docker create volume jenkins_home
+# 解压上传的jenkins数据卷（由于是docker的卷，所以需要通过容器来实现，且又要快，首选busybox镜像实现）
+docker run --rm \
+-v jenkins_home:/data \
+-v /root:/backup \
+busybox
+tar -zxvf /backup/jenkins_home_backup.tar.gz -C /data
+# 确认解压成功
+docker run --rm -v jenkins_home:/data busybox ls -lha /data
+# 解压项目文件至/opt目录
+mkdir -p /opt/selenium-learning
+tar -zxvf /root/project_files.tar.gz -C /opt/selenium-learning
+# 检查项目结构
+ls -lah /opt/selenium-learning
+```
+
+###### 5. docker-compose启动Jenkins服务
+
+指令介绍：
+
+| 指令                           | 作用                                                 |
+| ------------------------------ | ---------------------------------------------------- |
+| `docker-compose down`          | 停止并**删除**所有容器、网络（**不删卷**）           |
+| `docker-compose ps`            | 查看当前编排的容器状态                               |
+| `docker-compose build`         | 只构建镜像，不启动容器                               |
+| `docker-compose up -d --build` | **强制重新构建镜像**再启动（修改 Dockerfile 后必用） |
+| docker container ls            | 容器随意删除                                         |
+| docker image ls                | 常用官方镜像不用删除                                 |
+| docker volume ls               | 卷谨慎删除                                           |
+
+需要进入对应的docker-compose.yaml文件目录下，使用docker compose up -d --build构建同时创建容器。
+
+docker-compose是通过yaml文件配置来启动jenkins容器。docker会固定给指定卷添加jenkins，一般使用external:jenkin_home(外部卷数据)或者driver:home(构建)最终镜像均是jenkins_home。
+
+###### 6. 验证浏览器
+
+windows断输入url:http://106.14.250.120:8080/
+
+![](../picturs/27.png)
+
+###### 7.  改Jenkins URL
+
+![](../picturs/28.png)
+
+###### 8. 改gitee webhook
+
+创建gitee令牌
+
+![](../picturs/29.png)
+
+gitee测试连接
+
+![](../picturs/30.png)
+
+###### 9. 自动触发构建
+
+```bash
+# 本地 push 一个测试 commit
+cd ~/Desktop/selenium-learning
+echo "# cloud deploy test" >> README.md
+git add README.md
+git commit -m "2026/5/10 test: 云端 Jenkins 验证"
+git push
+```
+

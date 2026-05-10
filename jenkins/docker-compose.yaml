@@ -3,19 +3,25 @@
 # 用途：一键部署完整 Jenkins 环境
 # ==========================================
 version: "3.8"
+# docker compose 文件格式版本；版本越高支持功能越多，当前支持build上下文，命名卷，group_add等全部现代特性
 
 services:
   jenkins:
+  # 定义一组服务（容器）。当前只有jenkins一个，但未来可以加mysql,redis等
     build:
-      context: .	# 构建上下文，指定为当前目录
-      dockerfile: Dockerfile.jenkins	# 前面写好的dockerfile来构建镜像
-    container_name: jenkins-master-cicd		# 构建后的容器名称
-    user: root  # jenkins需要 root 权限操作 docker.sock
-    restart: unless-stopped	# 除非手动，崩溃或者宿主机重启后自动重启
-    privileged: true  # 必须，用于访问 Docker 引擎，特权模式，允许容器访问宿主机设备文件
+    # 构建
+      context: .	# 构建上下文，指定为当前目录；上下文也能决定COPY能访问到那些文件
+      dockerfile: Dockerfile.jenkins	# 前面写好的dockerfile来构建镜像；此处指定执行的docker文件
+    # 容器名字
+    container_name: jenkins-master-cicd		# 构建后的容器名称；不固定会有动态名字 目录名_服务名_序号
+    # 进入容器内部
+    user: root  # jenkins-master-cicd以root用户进入，root拥有最高权限，操作 访问 /var/run/docker.sock；此处会覆盖USER jenkins
+    restart: unless-stopped	# 除非手动，崩溃或者宿主机重启后自动重启.
+    privileged: true  # 必须，用于访问wsl的 Docker 引擎，特权模式，允许容器访问宿主机设备文件； docker 客户端能完全操控宿主机的 Docker Engine。
     
     ports:
       - "8080:8080"		# jenkins web ui
+      # wsl端口 ——> 容器端口
       - "50000:50000"		# JNLP Agent 通信；本方案用动态容器（Docker Agent）而非 JNLP Agent，这个端口实际不会用到，但保留是最佳实践
     
     environment:
@@ -31,21 +37,21 @@ services:
     
     volumes:
       # Jenkins 数据持久化
-      - jenkins_home:/var/jenkins_home
+      - jenkins_home:/var/jenkins_home  # 每次数据保存，不然每次都是新数据，需要重新构建
       # 保存Jekins所有配置、插件、构建历史、凭证。容器删除后数据不丢失。实际存储在WSL2的/var/lib/docker/volumes/jenkins_home/_data
       # 是命名卷，给个名字就可以了。其他卷是绑定挂在
       
       # ★ 核心关键：Docker 操控通道（兄弟容器模式）
-      - /var/run/docker.sock:/var/run/docker.sock
-      # jenkins容器内的进程通过这个socket文件，向宿主机的Docker引擎发送命令。
+      - /var/run/docker.sock:/var/run/docker.sock # 控制docker
+      # jenkins容器内的docker客户端（构建镜像时，会安装docker.io）通过这个socket文件，向宿主机的Docker引擎发送命令。DooD的核心
       # 在Jenkins pipeline中执行docker build等，实际是在宿主机上创建兄弟容器，而不是在jenkins容器中嵌套创建。
       
       # 挂载宿主机 Docker 二进制文件（WSL2 路径）
-      - /usr/bin/docker:/usr/bin/docker:ro
-      # 由于jenkins中没有docker命令，所以将其挂在进去。
+      - /usr/bin/docker:/usr/bin/docker:ro  # 使用docker 二进制指令；
+      # 由于jenkins中没有docker命令，所以将其挂在进去。只读
       
       # 挂载本地时区文件
-      - /etc/localtime:/etc/localtime:ro
+      - /etc/localtime:/etc/localtime:ro  # 同步wsl时间
       # 让jenkins容器的时间同步wsl
     
     # 确保 Jenkins 用户有权限操作 Docker
@@ -58,3 +64,122 @@ volumes:
   jenkins_home:
     driver: local
     # 使用 Docker 本地卷驱动创建 jenkins_home 卷；除非你执行 docker volume rm jenkins_home
+
+
+# .env下的变量是供构建容器时，使用的变量，而不是供jenkins pipeline使用。jenkins pipeline读取的是jenkins credentials系统定义的变量，更不是linux系统环境变量。
+# 除非我在jenkinsfile中写出，sh "echo $EMAIL_USER"
+
+
+# 本文替代：
+# docker run -d \
+#   --name jenkins-master-cicd \
+#   --restart unless-stopped \
+#   --privileged \
+#   --user root \
+#   --group-add docker \
+#   -p 8080:8080 \
+#   -p 50000:50000 \
+#   -e JAVA_OPTS=-Djenkins.install.runSetupWizard=false \
+#   -e GITEE_USER="ElsonComing1" \
+#   -e GITEE_PASS="..." \
+#   -e EMAIL_USER="1653195118@qq.com" \
+#   -e EMAIL_PASSWORD="..." \
+#   -e DINGDING_TOKEN="" \
+#   -v jenkins_home:/var/jenkins_home \
+#   -v /var/run/docker.sock:/var/run/docker.sock \
+#   -v /usr/bin/docker:/usr/bin/docker:ro \
+#   -v /etc/localtime:/etc/localtime:ro \
+#   jenkins_jenkins:latest  # 构建后的镜像名
+
+
+# 启动步骤
+# # 1. 进入 docker-compose.yaml 所在目录
+# cd /mnt/c/Users/16531/Desktop/selenium-learning/jenkins
+
+# # 2. 确认文件齐全
+# ls docker-compose.yaml Dockerfile.jenkins casc_configs/plugins.txt
+
+# # 3. 构建并启动（首次或改了 Dockerfile/plugins 时用 --build）
+# docker-compose up -d --build
+
+# # 4. 查看实时日志（等 "Jenkins is fully up and running"）
+# docker-compose logs -f
+
+# # 5. 另开终端验证容器状态
+# docker ps | grep jenkins-master-cicd
+
+# 问题：
+# 1.一组服务就是一个容器么？dockerfile指定的可以多个文件，那么最终会是多个容器么？
+# 一组服务可以多个容器，docker-compose up --scale jenkins=3一个服务三个容器，Dockerfile指定怎么构造镜像
+# docker-compose.yaml可以编排多个服务，多个容器。不可以多个文件，但是可以多个服务下，指定对应一个构建镜像文件
+
+# 2.当前只有 jenkins 一个，但未来可以加 MySQL、Redis 等。怎么加简单举例子即可，与jenkins同级别的mysql?
+# 多个服务直接与jenkins同级创建多个服务。可以直接指定image:mysql:8.0
+
+# 3.unless-stopped意思，只要不是我dokcer-compose down那么其他任何问题下，都会自己重启？不需要我再docker-compose up?
+# 只要我不手动停止（docker stop jenkins-master-cicd）手动销毁（docker-compose down）手动删除（docker rn -f）,其他就会自己重启
+
+# 4."8080:8080"这个端口映射，目的是在本地使用该端口就能访问该网页是么？要是还有其他容器需要端口，那么这个容器是不是就不能再使用8080而该用别的端口？wsl端口和windows端口是一个东西吧？
+# 浏览器访问 localhost:8080
+#         ↓
+# Windows 宿主机 8080 端口
+#     ↓
+# Docker Desktop 端口转发
+#     ↓
+# WSL2 网络命名空间 8080 端口
+#     ↓
+# 容器内部 8080 端口（Jenkins 进程监听）
+# 端口映射，为了暴露容器的端口给windows使用；宿主机的端口必须唯一使用，容器之间可以重复端口；desktop docker实现windows能够访问容器端口
+
+# 5.以下代码为什么要加上-?不是参数扩展
+# environment:
+#       # 跳过安装向导（生产环境建议首次启动后注释掉），配合JCasC实现开箱即用
+#       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+#       # 传递凭证环境变量（更安全的方式是用 Docker Secrets）
+#       # 从宿主机.env文件获取值，如果没有定义，则默认认为空字符串:-后面的值，shell参数扩展
+#       - GITEE_USER=${GITEE_USER:-}
+#       - GITEE_PASS=${GITEE_PASS:-}
+#       - EMAIL_USER=${EMAIL_USER:-}
+#       - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+#       - DINGDING_TOKEN=${DINGDING_TOKEN:-}
+# -表示列表里的一个元素，数组写法，支持shell参数扩展，解析直观。
+
+# 6.定义的这个环境变量是传递到哪儿去？有什么用？供谁使用？我有使用到么？
+# .env 文件 → docker-compose 读取 → 填充到容器进程的环境变量；供容器内的linux进程使用
+
+# 7. - jenkins_home:/var/jenkins_home 宿主机为啥就直接是一个jenkins_home而不指明具体路径
+# 卷名:容器路径；Docker自动管理，通常在/var/lib/docker/volumes/卷名/_data;与挂载不同：/完整/路径:/容器/路径
+# 不关心宿主机具体存在哪里，Docker自动管理
+# 跨平台兼容
+# 支持卷驱动
+
+# 8.挂载的目的，是为了能够访问到是么？但是可以设置访问权限，只读或者只写权限是吧？
+# 挂载目的是为了打破容器隔离，默认读写
+
+# 9.宿主机的docker组是desktop docker提供的么？
+# group_add:
+#       - docker
+# 又如何是全部进程加入docker组呐？
+# desktop 集成的wsl就会有docker组；容器主进程以root身份运行的进程额外加入docker组
+
+# 10.为什么最外层还要volumes一下，这个名字jenkins_home和前面挂在的jenkins_home宿主名有关系么？作用是啥？以及driver: local什么作用为什么是dirver而不是别的参数名字？有什么作用
+# volumes:
+#   jenkins_home:
+#     driver: local
+#     # 声明一个命名卷，使用 Docker 本地驱动。
+#     # 如果不声明，Docker Compose 也会自动创建，但显式声明更清晰。
+#     # 数据实际存储在 WSL2 的 /var/lib/docker/volumes/jenkins_home/_data。
+# 前面是使用，后面是定义；是同一个；指定驱动是local(默认)，宿主机本地磁盘存储
+# 具体文件路径必须挂载，不关心路径就命名卷
+
+# 11.容器内环境变量与 Jenkins Credentials 系统是一个东西么？有什么不同？
+# 完全不同，前者不安全，后者安全。
+
+# 12.docker-compose down 后，镜像还在么？
+# docker-compose down -rmi all 删除所有镜像，卷和网络还在；docker-compose down -rmi all -v 删除全部包括卷；
+
+# 13.既然 Jenkins Credentials 更安全，为什么还要用 .env？有意义么？
+# 没有使用完整删除，越私密，就用Jenkins Credentials
+
+# 14.卷 镜像 容器 之间有什么不同以及联系
+# 镜像是只读模板，静态；容器是运行实例，动态；卷是独立容器，持久存储（落在宿主机中）。
