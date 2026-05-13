@@ -3558,3 +3558,163 @@ git commit -m "2026/5/10 test: 云端 Jenkins 验证"
 git push
 ```
 
+![](../picturs/32.png)
+
+###### 10. 结果
+
+运行前：
+
+![](../picturs/31.png)
+
+运行中：
+
+![](../picturs/33.png)
+
+![](../picturs/34.png)
+
+运行后：
+
+![](../picturs/35.png)
+
+钉钉报告：
+![](../picturs/36.png)
+
+邮箱：
+
+![](../picturs/37.png)
+
+#### 6. charles学习
+
+##### 1. 下载配置charles
+
+###### 1. 下载
+
+download url：https://www.charlesproxy.com/download/
+
+![](../picturs/38.png)
+
+###### 2. 安装
+
+一路next
+
+![](../picturs/39.png)
+
+###### 3. 激活
+
+激活URL:https://www.zzzmode.com/mytools/charles/
+
+![](../picturs/40.png)
+
+打开charles选择help第一个选项enter charles license
+
+![](../picturs/41.png)
+
+点击register
+
+###### 4. 安装证书
+
+安装证书就像是商家买东西，顾客只有看见你有这个证书，才会详细商品质量，才会买。因此，在charles直接安装，是安装在本地电脑，浏览器直接能获取到证书，后续就会信任charles。
+
+![](../picturs/42.png)
+
+###### 5. 设置SSL
+
+![](../picturs/43.png)
+
+###### 6. 代理设置
+
+代理就是通路，charles能够收到浏览器的请求。
+
+![](../picturs/44.png)
+
+##### 2. 过滤
+
+host就是主机，域名就是ip，path指的是服务器的路径；一个主机会有多个ip，一个ip多个域名，一个域名多个ip，多个域名同一个服务。
+
+```plain
+https://  osfr.lenovomm.com  /  api  /  voice  ?  id=123
+   ↑              ↑           ↑    ↑      ↑        ↑
+ 协议           Host        Path  Path   Path   Query参数
+ (https)     (找哪栋楼)    (服务器内部的房间号)
+```
+
+###### 1. filter
+
+输入host或者域名的关键字进行筛选
+
+![](../picturs/45.png)
+
+###### 2. 精确过滤
+
+Proxy → Recording Settings → Include → Add → 填入 Protocol: https, Host: 你的API域名, Port: 443。
+
+![](../picturs/46.png)
+
+##### 3. 查看请求详情
+
+| 标签         | 看什么                       | 对你测试的意义                                |
+| ------------ | ---------------------------- | --------------------------------------------- |
+| **Overview** | 统计信息（耗时、大小、速度） | 判断接口性能，是否超时                        |
+| **Summary**  | 更详细的请求/响应摘要        | 快速浏览                                      |
+| **Chart**    | 时间线瀑布图                 | 看哪个环节耗时最长（DNS/Connect/SSL/Latency） |
+
+![](../picturs/47.png)
+
+##### 4. Breakpoint(断点)
+
+不用写代码，直接该参数测试后端校验；可以改请求参数，也可以改响应参数。
+
+需要在提交前charles就断点，可以proxy选项提前设置，直接填写参数后，提交，charles就会拦截，然后弹窗。
+
+![](../picturs/48.png)
+
+![](../picturs/49.png)
+
+![](../picturs/50.png)
+
+##### 5. Map Local(本地映射)——Mock数据，后端没写完也能测
+
+选中要访问的path，然后右键选择mock local,确认参数，再选中要待会儿要返回的数据文件（提前构建），最后浏览器再次访问该链接，就会返回数据文件中的数据。
+
+![](../picturs/51.png)
+
+##### 6. Map Remote(远程映射)——切换测试环境
+
+访问当前url却能访问到另一个url
+
+![](../picturs/52.png)
+
+![](../picturs/53.png)
+
+##### 7. Rewrite——长期批量自动静默
+
+| 特性         | Breakpoints          | Rewrite                    |
+| ------------ | -------------------- | -------------------------- |
+| **交互方式** | 弹窗拦截，手动改     | 静默自动，后台改           |
+| **执行时机** | 每次请求都弹窗等你点 | 匹配就自动执行，无感知     |
+| **适用场景** | 临时调试，试一两次   | 长期规则，批量测试         |
+| **效率**     | 慢，需人工介入       | 快，跑自动化脚本时也能生效 |
+
+![](../picturs/54.png)
+
+请求的Headers的User-Agent的value变成更改内容。空格默认就是全部。
+
+![](../picturs/55.png)
+
+##### 8. Throttle(弱网模拟)
+
+对指定网络降低网速，可以测试其超时处理，重试逻辑等方面。
+
+选择预设：
+
+- `56 kbps Modem`：极慢，测试超时
+- `3G` / `4G`：模拟移动网络
+- `High Latency`：高延迟
+
+![](../picturs/56.png)
+
+##### 9. 导出请求
+
+快速生成python requests脚本，通过右键选择Copy cURL Request，再借助https://curlconverter.com/工具自定转化生成所需python requests代码。
+
+![](../picturs/57.png)
