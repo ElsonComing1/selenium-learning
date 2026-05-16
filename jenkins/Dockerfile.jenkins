@@ -10,27 +10,27 @@ USER root
 # USER用户切换 root超级用户；当前安装环境需要，当环境安装完毕，需要切换回去。 （一层）
 # 因为jenkins镜像的默认用户是jenkins改用户没有权限执行apt-get install
 
-# 更换 Debian 源为阿里云（构建镜像时加速）
 # 更换 Debian 源为阿里云（兼容 Debian 11/12）
 RUN if [ -f /etc/apt/sources.list ]; then \
-        # Debian 11 及更早版本
         sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
         sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
-    fi && \
-    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-        # Debian 12+ 新版本
-        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
-        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
-    fi && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
+        fi && \
+        if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+            sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+            sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
+        fi && \
+        apt-get update && \
+        apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         gnupg \
         lsb-release \
-        docker.io && \
-    rm -rf /var/lib/apt/lists/*
-    # 安装 Docker CLI（用于控制宿主机 Docker）
+        docker.io \
+        tzdata && \          
+        ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \  
+        echo "Asia/Shanghai" > /etc/timezone && \                     
+        dpkg-reconfigure -f noninteractive tzdata 2>/dev/null || true && \ 
+        rm -rf /var/lib/apt/lists/*
 
 # 第一个debian是主软件源，第二个security是安全更新源，均需要更新为国内的阿里云，不然下载速度差异大，还是很慢
 # apt-get update作用是更新搜索路径；如果只是换源，不更新搜索路径，执行下载，其速度还是很慢。
@@ -66,6 +66,9 @@ RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt \
 RUN chown -R jenkins:jenkins /var/jenkins_home
 # 确保该路径下的全部内容的所有者和用户组都是jenkins:jenkins
 # jenkins的主目录是/var/jenkins_home
+
+# 设置 Jenkins 时区环境变量（双保险）
+ENV TZ=Asia/Shanghai
 
 USER jenkins
 # 再次切回非特权用户jenkins;目的为了安全，避免不发份子利用

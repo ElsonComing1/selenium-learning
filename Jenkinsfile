@@ -268,17 +268,17 @@ pipeline {
                     type: 'MARKDOWN',
                     title: "✅ 构建成功: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     text: [
-                        "### 🎉 API 自动化测试 + 性能测试 构建成功",
-                        "---",
-                        "**项目**: ${env.JOB_NAME}",
-                        "**构建号**: ${env.BUILD_NUMBER}",
-                        "**分支**: ${env.GIT_BRANCH}",
-                        "**持续时间**: ${currentBuild.durationString}",
-                        "**Allure 报告**: [点击查看](${env.BUILD_URL}allure/)",
-                        "**JMeter 报告**: [点击查看](${env.BUILD_URL}JMeter_20Performance_20Report/)",
-                        "**控制台**: [查看日志](${env.BUILD_URL}console)",
-                        "---",
-                        "📊 动态容器与性能测试环境已自动清理，资源已释放"
+                        "### 🎉 API 自动化测试 + 性能测试 构建成功\n",
+                        "---\n",
+                        "**项目**: ${env.JOB_NAME}\n",
+                        "**构建号**: ${env.BUILD_NUMBER}\n",
+                        "**分支**: ${env.GIT_BRANCH}\n",
+                        "**持续时间**: ${currentBuild.durationString}\n",
+                        "**Allure 报告**: [点击查看](${env.BUILD_URL}allure/)\n",
+                        "**JMeter 报告**: [点击查看](${env.BUILD_URL}JMeter_20Performance_20Report/)\n",
+                        "**控制台**: [查看日志](${env.BUILD_URL}console)\n",
+                        "---\n",
+                        "📊 动态容器与性能测试环境已自动清理，资源已释放\n"
                     ]
                 )
 
@@ -312,15 +312,15 @@ pipeline {
                     title: "❌ 构建失败: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     atAll: true,
                     text: [
-                        "### ⚠️ API 自动化测试 / 性能测试 构建失败",
-                        "---",
-                        "**项目**: ${env.JOB_NAME}",
-                        "**构建号**: ${env.BUILD_NUMBER}",
-                        "**失败阶段**: ${env.STAGE_NAME}",
-                        "**Git 提交**: ${env.GIT_COMMIT?.take(7)}",
-                        "**查看详情**: [控制台日志](${env.BUILD_URL}console)",
-                        "---",
-                        "🔴 请立即检查代码、JMeter 脚本或联系 DevOps 工程师"
+                        "### ⚠️ API 自动化测试 / 性能测试 构建失败\n",
+                        "---\n",
+                        "**项目**: ${env.JOB_NAME}\n",
+                        "**构建号**: ${env.BUILD_NUMBER}\n",
+                        "**失败阶段**: ${env.STAGE_NAME}\n",
+                        "**Git 提交**: ${env.GIT_COMMIT?.take(7)}\n",
+                        "**查看详情**: [控制台日志](${env.BUILD_URL}console)\n",
+                        "---\n",
+                        "🔴 请立即检查代码、JMeter 脚本或联系 DevOps 工程师\n"
                     ]
                 )
 
