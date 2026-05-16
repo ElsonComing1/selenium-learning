@@ -4,12 +4,19 @@
 # ==========================================
 FROM python:3.12-slim
 
-# 更换 Debian 源为阿里云镜像
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+# 更换 Debian 源为阿里云镜像（兼容 Debian 12+ 的 deb822 格式）
+RUN set -e && \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources && \
+        sed -i 's|http://security.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources; \
+    elif [ -f /etc/apt/sources.list ]; then \
+        sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list && \
+        sed -i 's|http://security.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list; \
+    fi && \
+    apt-get update
 
 # 安装编译依赖 + JMeter 依赖（OpenJDK）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get install -y --no-install-recommends \
     gcc \
     libffi-dev \
     openjdk-17-jre-headless \
@@ -35,11 +42,11 @@ RUN wget -q https://mirrors.tuna.tsinghua.edu.cn/apache/jmeter/binaries/apache-j
     && rm apache-jmeter-${JMETER_VERSION}.tgz \
     && jmeter --version | head -n 1
 
-# 复制项目源码（Jenkins 构建时注入）
+# 复制项目源码
 COPY . .
 
-# 创建报告目录（Allure + JMeter 共用父目录）
+# 创建报告目录
 RUN mkdir -p /app/report/allure-results /app/report/jmeter-report
 
-# 默认入口（会被 Jenkins Pipeline 覆盖）
+# 默认入口
 CMD ["pytest", "--version"]
