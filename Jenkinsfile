@@ -21,8 +21,10 @@ pipeline {
         // 邮箱接收列表（逗号分隔）
         EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com,2567195697@qq.com'
 
-        // JMeter 脚本路径（相对于 WORKSPACE 根目录）
-        JMETER_SCRIPT = 'jmeter/api_load_test.jmx'
+        // 宿主机检查用（基于 WORKSPACE 根目录）
+        JMETER_SCRIPT_HOST = 'content/API_Project/jmeter/api_load_test.jmx'
+        // 容器内执行用（基于 -w 工作目录 content/API_Project）
+        JMETER_SCRIPT_CONTAINER = 'jmeter/api_load_test.jmx'
     }
 
     options {
@@ -113,10 +115,10 @@ pipeline {
                 script {
                     echo ">>> 检查 JMeter 脚本是否存在..."
 
-                    // 防御性编程：脚本不存在则跳过，避免阻断流水线
-                    def scriptExist = sh(returnStatus: true, script: "test -f ${JMETER_SCRIPT}")
+                    // 宿主机上检查完整路径
+                    def scriptExist = sh(returnStatus: true, script: "test -f ${JMETER_SCRIPT_HOST}")
                     if (scriptExist != 0) {
-                        echo "⚠️ 未找到 JMeter 脚本: ${JMETER_SCRIPT}，跳过性能测试阶段"
+                        echo "⚠️ 未找到 JMeter 脚本: ${JMETER_SCRIPT_HOST}，跳过性能测试阶段"
                         catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                             error("JMeter 脚本缺失，已标记为 UNSTABLE 并跳过")
                         }
@@ -134,11 +136,14 @@ pipeline {
                             -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
                             -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
                             ${TEST_IMAGE} \
-                            bash -c "rm -rf report/jmeter-report report/jmeter-results.jtl && jmeter -n -t ${JMETER_SCRIPT} -l report/jmeter-results.jtl -e -o report/jmeter-report -Jserver.rmi.ssl.disable=true -Jjmeter.save.saveservice.output_format=csv -Jjmeter.save.saveservice.assertion_results_failure_message=true"
+                            bash -c 'rm -rf report/jmeter-report report/jmeter-results.jtl && jmeter -n -t ${JMETER_SCRIPT_CONTAINER} \
+                                -l report/jmeter-results.jtl \
+                                -e -o report/jmeter-report \
+                                -Jserver.rmi.ssl.disable=true \
+                                -Jjmeter.save.saveservice.output_format=csv \
+                                -Jjmeter.save.saveservice.assertion_results_failure_message=true'
                     """
-                    // 禁用ssl,避免被master和slave通信干扰，反正是本机运行
-                    // xml体积大，csv体积小，便于理解
-                    // 默认只记成功/失败；开启后.jtl里能看到具体哪一个断言失败
+
                     echo ">>> JMeter 性能测试执行完毕"
                 }
             }
@@ -274,7 +279,7 @@ pipeline {
                         "**控制台**: [查看日志](${env.BUILD_URL}console)",
                         "---",
                         "📊 动态容器与性能测试环境已自动清理，资源已释放"
-                    ].join("\n")
+                    ]
                 )
 
                 // 2. 邮件通知
@@ -316,7 +321,7 @@ pipeline {
                         "**查看详情**: [控制台日志](${env.BUILD_URL}console)",
                         "---",
                         "🔴 请立即检查代码、JMeter 脚本或联系 DevOps 工程师"
-                    ].join("\n")
+                    ]
                 )
 
                 // 2. 邮件失败通知
