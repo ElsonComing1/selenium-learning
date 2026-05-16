@@ -22,7 +22,7 @@ pipeline {
         EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com,2567195697@qq.com'
 
         // JMeter 脚本路径（相对于 WORKSPACE 根目录）
-        JMETER_SCRIPT = 'content/API_Project/jmeter/api_load_test.jmx'
+        JMETER_SCRIPT = 'meter/api_load_test.jmx'
     }
 
     options {
