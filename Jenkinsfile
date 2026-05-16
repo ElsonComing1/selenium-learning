@@ -19,7 +19,7 @@ pipeline {
         DINGDING_CREDENTIALS = 'DINGDING_CREDENTIALS'
 
         // 邮箱接收列表（逗号分隔）
-        EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com,2567195697@qq.com,1754605787@qq.com'
+        EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com,2567195697@qq.com,1754605787@qq.com,2653202245@qq.com'
 
         // 宿主机检查用（基于 WORKSPACE 根目录）
         JMETER_SCRIPT_HOST = 'content/API_Project/jmeter/api_load_test.jmx'

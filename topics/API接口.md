@@ -4651,3 +4651,40 @@ pipeline {
 这个文件**不能手写**，必须用 JMeter GUI 生成。操作步骤：
 
 前提已经配置好的线程组，文件选择save test plan as，保存文件后，需要将对应的CSV Data Set Config文件与前者在同一个目录下，同时需要更改脚本文件下的绝对路径为相对路径。
+
+##### 6. 端 Jenkins 前置准备
+
+搜索 `HTML Publisher` → 勾选 → **Install without restart**
+
+##### 7. 执行与验证
+
+###### 1. 出发构建
+
+提交代码后，Gitee Webhook 会自动触发；或手动点击 **Build Now**。
+
+```bash
+git add .
+git commit -m "2026-05-16 jmeter api_load_test.jmx"
+git push
+```
+
+###### 2. 观察 Stage View
+
+构建页面的 Stage View 应出现以下阶段：
+
+
+
+###### 3. 检查构建日志关键输出
+
+
+
+###### 4. 查看报告
+
+
+
+###### 5. 查看邮件
+
+
+
+###### 6. 下载原始数据
+
