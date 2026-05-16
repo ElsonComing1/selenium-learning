@@ -16,7 +16,7 @@ pipeline {
         GITEE_CREDENTIALS = 'gitee-credentials'
 
         // 钉钉 Webhook 凭证 ID
-        DINGDING_CREDENTIALS = 'dingding-token'
+        DINGDING_CREDENTIALS = 'DINGDING_CREDENTIALS'
 
         // 邮箱接收列表（逗号分隔）
         EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com,2567195697@qq.com'
