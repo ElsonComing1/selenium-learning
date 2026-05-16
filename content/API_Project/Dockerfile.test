@@ -1,44 +1,45 @@
 # ==========================================
-# 文件名：API_Project/Dockerfile.test
-# 用途：极速构建的测试运行环境（全链路国内源）
+# 文件名：content/API_Project/Dockerfile.test
+# 用途：测试运行环境（国内源加速，内含 Pytest + JMeter）
 # ==========================================
 FROM python:3.12-slim
-# python:3.12-slim是安装精简版
 
-# 更换 Debian 源为阿里云镜像（构建速度提升 10 倍）
-RUN if [ -f /etc/apt/sources.list ]; then \
-        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
-    fi && \
-    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
-        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
-    fi
+# 更换 Debian 源为阿里云镜像
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
 
-# 安装编译依赖（如需 Chrome 可在此扩展）
-# set -e 确保任何命令失败都会中断构建，不会带着残缺的依赖继续
-RUN set -e && apt-get update && apt-get install -y --no-install-recommends \
+# 安装编译依赖 + JMeter 依赖（OpenJDK）
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libffi-dev \
+    openjdk-17-jre-headless \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-# WORKDIR 如果切换目录不存在会生成目录同时切入作为当前工作目录
 
 # 先复制依赖文件，利用 Docker 缓存层
 COPY requirements.txt .
 
-# 使用清华 PyPI 镜像安装依赖（避免国外源超时）
-ARG PIP_INDEX_URL=https://pypi.org/simple  # 定义构建参数，带默认值
-RUN pip install --no-cache-dir -i ${PIP_INDEX_URL} \
+# 使用清华 PyPI 镜像安装 Python 依赖
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
     -r requirements.txt
 
-# 复制项目源码（由 Jenkins 在构建时注入，此处仅为完整性）
+# ==========================================
+# 安装 JMeter（清华镜像加速，版本 5.6.3）
+# ==========================================
+ENV JMETER_VERSION=5.6.3
+RUN wget -q https://mirrors.tuna.tsinghua.edu.cn/apache/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz \
+    && tar -xzf apache-jmeter-${JMETER_VERSION}.tgz -C /opt \
+    && ln -s /opt/apache-jmeter-${JMETER_VERSION}/bin/jmeter /usr/local/bin/jmeter \
+    && rm apache-jmeter-${JMETER_VERSION}.tgz \
+    && jmeter --version | head -n 1
+
+# 复制项目源码（Jenkins 构建时注入）
 COPY . .
 
-# 创建报告目录
-RUN mkdir -p /app/report/allure-results
+# 创建报告目录（Allure + JMeter 共用父目录）
+RUN mkdir -p /app/report/allure-results /app/report/jmeter-report
 
 # 默认入口（会被 Jenkins Pipeline 覆盖）
 CMD ["pytest", "--version"]
-# 容器启动后的默认命令;用于显示是否安装成功

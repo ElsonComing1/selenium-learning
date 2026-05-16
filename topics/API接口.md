@@ -2653,17 +2653,27 @@ USER root
 # 因为jenkins镜像的默认用户是jenkins改用户没有权限执行apt-get install
 
 # 更换 Debian 源为阿里云（构建镜像时加速）
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+# 更换 Debian 源为阿里云（兼容 Debian 11/12）
+RUN if [ -f /etc/apt/sources.list ]; then \
+        # Debian 11 及更早版本
+        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
+    fi && \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        # Debian 12+ 新版本
+        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
+    fi && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         gnupg \
         lsb-release \
-        # 安装 Docker CLI（用于控制宿主机 Docker）
         docker.io && \
     rm -rf /var/lib/apt/lists/*
+    # 安装 Docker CLI（用于控制宿主机 Docker）
+
 # 第一个debian是主软件源，第二个security是安全更新源，均需要更新为国内的阿里云，不然下载速度差异大，还是很慢
 # apt-get update作用是更新搜索路径；如果只是换源，不更新搜索路径，执行下载，其速度还是很慢。
 # 也就是说，当换源后，就需要进行下载搜索路径更新，使其换源生效。
@@ -2671,24 +2681,28 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
 # gnupg是为了校验软件包的数字签名，验证使用的是否是正版软件
 # lsb-release 自动系统版本识别，用于选择正确的仓库
 # curl http命令行客户端，用于消灾GPG公钥，测试网络、调用API
-# docker.io docker引擎客户端，服务端是desktop docker，通过socket通信，使其指令有效在容器内运行Docker命令，实现Docker-outside-of-Docker
+# docker.io 是引擎客户端，服务端是desktop docker，jenkins中也能使用docker指令（实际是外部desktopdocker），通过socket通信，使其指令有效在容器内运行Docker命令，实现Docker-outside-of-Docker
 # 删除软件包索引数据库
 
 # 预装 Jenkins 插件（使用国内清华源）
 COPY --chown=jenkins:jenkins casc_configs/plugins.txt /usr/share/jenkins/ref/plugins.txt
 # 复制指定文件到指定镜像中，且指定所有者和用户组
+# /var/jenkins_home由于是基于jenkins镜像构建，所以会存在一些基础目录，且构建镜像时，就已经复制进该路径下，而不是创建容器后
 
 RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt \
-    --jenkins-update-center https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
+    --jenkins-update-center https://mirrors.huaweicloud.com/jenkins/updates/update-center.json
 # jenkins-plugin-cli插件安装命令行工具；--plugin-file指定插件列表文件；--jenkins-update-center 换源
 # 目的：为了不在首次进入时耗费更多时间安装，所以直接镜像安装。且更快。
+# --chown=jenkins:jenkins设置属主和属组，由于当前是root,便于后面在jenkins默认用户下，就能使用该文件
+
 
 
 # 加载 Configuration as Code 配置
-ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
-# ENV设置环境变量，高速jenkins，我的配置都在这个路径的yaml文件下，加载时使用这个，而不使用默认UI配置
-COPY --chown=jenkins:jenkins casc_configs/jenkins.yaml /var/jenkins_home/casc_configs/jenkins.yaml
+# ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
+# ENV设置环境变量，告诉jenkins，我的配置都在这个路径的yaml文件下，加载时使用这个，而不使用默认UI配置
+# COPY --chown=jenkins:jenkins casc_configs/jenkins.yaml /var/jenkins_home/casc_configs/jenkins.yaml
 # 将windows下写好的配置文件直接整如镜像
+
 
 # 确保目录权限正确
 RUN chown -R jenkins:jenkins /var/jenkins_home
@@ -2699,6 +2713,12 @@ USER jenkins
 # 再次切回非特权用户jenkins;目的为了安全，避免不发份子利用
 
 # 构建指令，需要进入C:\Users\16531\Desktop\selenium-learning\jenkins；然后执行docker build -f Dockerfile.jenkins -t 镜像名（可以相同）:标签名（不能相同） .(构建路径)
+
+# docker run vs docker-compose up -d --build
+# up 启动或者创建定义在yaml里的所有服务，是在docker-compose.yaml所在目录创建构建镜像然后启动。
+# -d detached分离，后台运行
+# --build强制构建；随每次都强制构建，但是不会慢，因为docker有缓存层，只有变化的那层才会开始从新构建。（确保最新）
+# docker-compose直接默认构建，按照docker-compose.yaml的定义直接默认参数构建启动容器，可多次使用，不用重复书写启动容器参数。
 ```
 
 ###### 2. 预装插件清单
@@ -2798,19 +2818,25 @@ credentials:
 # 用途：一键部署完整 Jenkins 环境
 # ==========================================
 version: "3.8"
+# docker compose 文件格式版本；版本越高支持功能越多，当前支持build上下文，命名卷，group_add等全部现代特性
 
 services:
   jenkins:
+  # 定义一组服务（容器）。当前只有jenkins一个，但未来可以加mysql,redis等
     build:
-      context: .	# 构建上下文，指定为当前目录
-      dockerfile: Dockerfile.jenkins	# 前面写好的dockerfile来构建镜像
-    container_name: jenkins-master-cicd		# 构建后的容器名称
-    user: root  # jenkins需要 root 权限操作 docker.sock
-    restart: unless-stopped	# 除非手动，崩溃或者宿主机重启后自动重启
-    privileged: true  # 必须，用于访问 Docker 引擎，特权模式，允许容器访问宿主机设备文件
+    # 构建
+      context: .	# 构建上下文，指定为当前目录；上下文也能决定COPY能访问到那些文件
+      dockerfile: Dockerfile.jenkins	# 前面写好的dockerfile来构建镜像；此处指定执行的docker文件
+    # 容器名字
+    container_name: jenkins-master-cicd		# 构建后的容器名称；不固定会有动态名字 目录名_服务名_序号
+    # 进入容器内部
+    user: root  # jenkins-master-cicd以root用户进入，root拥有最高权限，操作 访问 /var/run/docker.sock；此处会覆盖USER jenkins
+    restart: unless-stopped	# 除非手动，崩溃或者宿主机重启后自动重启.
+    privileged: true  # 必须，用于访问wsl的 Docker 引擎，特权模式，允许容器访问宿主机设备文件； docker 客户端能完全操控宿主机的 Docker Engine。
     
     ports:
       - "8080:8080"		# jenkins web ui
+      # wsl端口 ——> 容器端口
       - "50000:50000"		# JNLP Agent 通信；本方案用动态容器（Docker Agent）而非 JNLP Agent，这个端口实际不会用到，但保留是最佳实践
     
     environment:
@@ -2826,21 +2852,21 @@ services:
     
     volumes:
       # Jenkins 数据持久化
-      - jenkins_home:/var/jenkins_home
+      - jenkins_home:/var/jenkins_home  # 每次数据保存，不然每次都是新数据，需要重新构建
       # 保存Jekins所有配置、插件、构建历史、凭证。容器删除后数据不丢失。实际存储在WSL2的/var/lib/docker/volumes/jenkins_home/_data
       # 是命名卷，给个名字就可以了。其他卷是绑定挂在
       
       # ★ 核心关键：Docker 操控通道（兄弟容器模式）
-      - /var/run/docker.sock:/var/run/docker.sock
-      # jenkins容器内的进程通过这个socket文件，向宿主机的Docker引擎发送命令。
+      - /var/run/docker.sock:/var/run/docker.sock # 控制docker
+      # jenkins容器内的docker客户端（构建镜像时，会安装docker.io）通过这个socket文件，向宿主机的Docker引擎发送命令。DooD的核心
       # 在Jenkins pipeline中执行docker build等，实际是在宿主机上创建兄弟容器，而不是在jenkins容器中嵌套创建。
       
       # 挂载宿主机 Docker 二进制文件（WSL2 路径）
-      - /usr/bin/docker:/usr/bin/docker:ro
-      # 由于jenkins中没有docker命令，所以将其挂在进去。
+      - /usr/bin/docker:/usr/bin/docker:ro  # 使用docker 二进制指令；
+      # 由于jenkins中没有docker命令，所以将其挂在进去。只读
       
       # 挂载本地时区文件
-      - /etc/localtime:/etc/localtime:ro
+      - /etc/localtime:/etc/localtime:ro  # 同步wsl时间
       # 让jenkins容器的时间同步wsl
     
     # 确保 Jenkins 用户有权限操作 Docker
@@ -2853,6 +2879,125 @@ volumes:
   jenkins_home:
     driver: local
     # 使用 Docker 本地卷驱动创建 jenkins_home 卷；除非你执行 docker volume rm jenkins_home
+
+
+# .env下的变量是供构建容器时，使用的变量，而不是供jenkins pipeline使用。jenkins pipeline读取的是jenkins credentials系统定义的变量，更不是linux系统环境变量。
+# 除非我在jenkinsfile中写出，sh "echo $EMAIL_USER"
+
+
+# 本文替代：
+# docker run -d \
+#   --name jenkins-master-cicd \
+#   --restart unless-stopped \
+#   --privileged \
+#   --user root \
+#   --group-add docker \
+#   -p 8080:8080 \
+#   -p 50000:50000 \
+#   -e JAVA_OPTS=-Djenkins.install.runSetupWizard=false \
+#   -e GITEE_USER="ElsonComing1" \
+#   -e GITEE_PASS="..." \
+#   -e EMAIL_USER="1653195118@qq.com" \
+#   -e EMAIL_PASSWORD="..." \
+#   -e DINGDING_TOKEN="" \
+#   -v jenkins_home:/var/jenkins_home \
+#   -v /var/run/docker.sock:/var/run/docker.sock \
+#   -v /usr/bin/docker:/usr/bin/docker:ro \
+#   -v /etc/localtime:/etc/localtime:ro \
+#   jenkins_jenkins:latest  # 构建后的镜像名
+
+
+# 启动步骤
+# # 1. 进入 docker-compose.yaml 所在目录
+# cd /mnt/c/Users/16531/Desktop/selenium-learning/jenkins
+
+# # 2. 确认文件齐全
+# ls docker-compose.yaml Dockerfile.jenkins casc_configs/plugins.txt
+
+# # 3. 构建并启动（首次或改了 Dockerfile/plugins 时用 --build）
+# docker-compose up -d --build
+
+# # 4. 查看实时日志（等 "Jenkins is fully up and running"）
+# docker-compose logs -f
+
+# # 5. 另开终端验证容器状态
+# docker ps | grep jenkins-master-cicd
+
+# 问题：
+# 1.一组服务就是一个容器么？dockerfile指定的可以多个文件，那么最终会是多个容器么？
+# 一组服务可以多个容器，docker-compose up --scale jenkins=3一个服务三个容器，Dockerfile指定怎么构造镜像
+# docker-compose.yaml可以编排多个服务，多个容器。不可以多个文件，但是可以多个服务下，指定对应一个构建镜像文件
+
+# 2.当前只有 jenkins 一个，但未来可以加 MySQL、Redis 等。怎么加简单举例子即可，与jenkins同级别的mysql?
+# 多个服务直接与jenkins同级创建多个服务。可以直接指定image:mysql:8.0
+
+# 3.unless-stopped意思，只要不是我dokcer-compose down那么其他任何问题下，都会自己重启？不需要我再docker-compose up?
+# 只要我不手动停止（docker stop jenkins-master-cicd）手动销毁（docker-compose down）手动删除（docker rn -f）,其他就会自己重启
+
+# 4."8080:8080"这个端口映射，目的是在本地使用该端口就能访问该网页是么？要是还有其他容器需要端口，那么这个容器是不是就不能再使用8080而该用别的端口？wsl端口和windows端口是一个东西吧？
+# 浏览器访问 localhost:8080
+#         ↓
+# Windows 宿主机 8080 端口
+#     ↓
+# Docker Desktop 端口转发
+#     ↓
+# WSL2 网络命名空间 8080 端口
+#     ↓
+# 容器内部 8080 端口（Jenkins 进程监听）
+# 端口映射，为了暴露容器的端口给windows使用；宿主机的端口必须唯一使用，容器之间可以重复端口；desktop docker实现windows能够访问容器端口
+
+# 5.以下代码为什么要加上-?不是参数扩展
+# environment:
+#       # 跳过安装向导（生产环境建议首次启动后注释掉），配合JCasC实现开箱即用
+#       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+#       # 传递凭证环境变量（更安全的方式是用 Docker Secrets）
+#       # 从宿主机.env文件获取值，如果没有定义，则默认认为空字符串:-后面的值，shell参数扩展
+#       - GITEE_USER=${GITEE_USER:-}
+#       - GITEE_PASS=${GITEE_PASS:-}
+#       - EMAIL_USER=${EMAIL_USER:-}
+#       - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+#       - DINGDING_TOKEN=${DINGDING_TOKEN:-}
+# -表示列表里的一个元素，数组写法，支持shell参数扩展，解析直观。
+
+# 6.定义的这个环境变量是传递到哪儿去？有什么用？供谁使用？我有使用到么？
+# .env 文件 → docker-compose 读取 → 填充到容器进程的环境变量；供容器内的linux进程使用
+
+# 7. - jenkins_home:/var/jenkins_home 宿主机为啥就直接是一个jenkins_home而不指明具体路径
+# 卷名:容器路径；Docker自动管理，通常在/var/lib/docker/volumes/卷名/_data;与挂载不同：/完整/路径:/容器/路径
+# 不关心宿主机具体存在哪里，Docker自动管理
+# 跨平台兼容
+# 支持卷驱动
+
+# 8.挂载的目的，是为了能够访问到是么？但是可以设置访问权限，只读或者只写权限是吧？
+# 挂载目的是为了打破容器隔离，默认读写
+
+# 9.宿主机的docker组是desktop docker提供的么？
+# group_add:
+#       - docker
+# 又如何是全部进程加入docker组呐？
+# desktop 集成的wsl就会有docker组；容器主进程以root身份运行的进程额外加入docker组
+
+# 10.为什么最外层还要volumes一下，这个名字jenkins_home和前面挂在的jenkins_home宿主名有关系么？作用是啥？以及driver: local什么作用为什么是dirver而不是别的参数名字？有什么作用
+# volumes:
+#   jenkins_home:
+#     driver: local
+#     # 声明一个命名卷，使用 Docker 本地驱动。
+#     # 如果不声明，Docker Compose 也会自动创建，但显式声明更清晰。
+#     # 数据实际存储在 WSL2 的 /var/lib/docker/volumes/jenkins_home/_data。
+# 前面是使用，后面是定义；是同一个；指定驱动是local(默认)，宿主机本地磁盘存储
+# 具体文件路径必须挂载，不关心路径就命名卷
+
+# 11.容器内环境变量与 Jenkins Credentials 系统是一个东西么？有什么不同？
+# 完全不同，前者不安全，后者安全。
+
+# 12.docker-compose down 后，镜像还在么？
+# docker-compose down -rmi all 删除所有镜像，卷和网络还在；docker-compose down -rmi all -v 删除全部包括卷；
+
+# 13.既然 Jenkins Credentials 更安全，为什么还要用 .env？有意义么？
+# 没有使用完整删除，越私密，就用Jenkins Credentials
+
+# 14.卷 镜像 容器 之间有什么不同以及联系
+# 镜像是只读模板，静态；容器是运行实例，动态；卷是独立容器，持久存储（落在宿主机中）。
 ```
 
 ##### 3. API_Project 测试镜像（国内源加速）
@@ -2868,11 +3013,18 @@ FROM python:3.12-slim
 # python:3.12-slim是安装精简版
 
 # 更换 Debian 源为阿里云镜像（构建速度提升 10 倍）
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+RUN if [ -f /etc/apt/sources.list ]; then \
+        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
+    fi && \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
+    fi
 
 # 安装编译依赖（如需 Chrome 可在此扩展）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# set -e 确保任何命令失败都会中断构建，不会带着残缺的依赖继续
+RUN set -e && apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -2884,7 +3036,8 @@ WORKDIR /app
 COPY requirements.txt .
 
 # 使用清华 PyPI 镜像安装依赖（避免国外源超时）
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+ARG PIP_INDEX_URL=https://pypi.org/simple  # 定义构建参数，带默认值
+RUN pip install --no-cache-dir -i ${PIP_INDEX_URL} \
     -r requirements.txt
 
 # 复制项目源码（由 Jenkins 在构建时注入，此处仅为完整性）
@@ -2947,9 +3100,8 @@ CMD ["pytest", "--version"]
 // ==========================================
 
 pipeline {
-    // 使用 any 即可，因为我们手动控制 Docker 容器;在jenkins中手动构建容器。使用时才需要
+    // 使用 any 即可，因为我们手动控制 Docker 容器
     agent any
-    
     
     environment {
         // 镜像与容器命名（带构建号隔离，防止并发冲突）
@@ -2963,7 +3115,7 @@ pipeline {
         DINGDING_CREDENTIALS = 'dingding-token'
         
         // 邮箱接收列表（逗号分隔）
-        EMAIL_RECIPIENTS = '16531@qq.com,manager@company.com'  // 修改为你的邮箱
+        EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com,2567195697@qq.com'  // 修改为你的邮箱
     }
     
     options {
@@ -2976,48 +3128,35 @@ pipeline {
     }
     
     stages {
-        // --------------------------------------------------
-        // Stage 1: 从 Gitee 拉取最新代码
-        // --------------------------------------------------
-        stage('Checkout from Gitee') {	// 阶段标题/名称，显示在UI的stage view中
-            steps {
-                script {
-                    echo ">>> 正在从 Gitee 拉取代码..."
-                    
-                    // 方式 A：使用预存凭证（推荐）
-                    git(
-                        url: 'https://gitee.com/ElsonComing1/selenium-learning.git',  // ★ 修改为你的仓库地址
-                        branch: 'main',  // 或 master
-                        credentialsId: "${GITEE_CREDENTIALS}"
-                    )
-                    
-                    // 方式 B：如果是公开仓库，可省略 credentialsId
-                    // git url: 'https://gitee.com/yourname/selenium-learning.git', branch: 'main'
-                    
-                    echo ">>> 代码拉取完成，当前提交: ${sh(returnStdout: true, script: 'git log -1 --pretty=format:"%h %s"').trim()}"
-                    // sh(参数，指令) ，返回git log最新一条指令
-                }
-            }
-        }
         
         // --------------------------------------------------
         // Stage 2: 构建测试镜像（国内缓存加速）
         // --------------------------------------------------
         stage('Build Test Image') {
             steps {
+                // script是因为内部会使用groovy代码
                 script {
-                    dir('content/API_Project') {
+                    // 切换当前工作目录，后续所有工作路径均在当前路径下
+                        dir('content/API_Project') {
                         echo ">>> 正在构建测试镜像: ${TEST_IMAGE}"
                         
-                        // 使用宿主机的 Docker（通过 docker.sock）
+                        // sh指shell脚本，"""支持多行，不可以三个单引号"""
+                        // --no-cache 强制重新安装依赖，避免缓存导致新包漏装
+                        // --no-cahce牺牲速度来提高正确性
                         sh """
                             docker build \
+                                --no-cache \
                                 --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
                                 -t ${TEST_IMAGE} \
                                 -f Dockerfile.test \
                                 .
                         """
-                        // --build-arg key=value向dockerfile传递构件式变量，只在构建时生效，不会留在运行环境中。
+                        
+                        // 铁证校验：镜像内必须有 yaml 模块
+                        sh """
+                            docker run --rm ${TEST_IMAGE} python -c "import yaml; print('PyYAML version:', yaml.__version__)" || { echo "ERROR: 镜像内缺少 PyYAML"; exit 1; }
+                        """
+                        
                         echo ">>> 镜像构建完成"
                     }
                 }
@@ -3030,35 +3169,32 @@ pipeline {
         stage('Run Tests in Dynamic Container') {
             steps {
                 script {
-                    echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
-                    
-                    // ★ 核心机制：将 Jenkins Workspace（含刚拉取的代码）挂载进当前容器
-                    // 这样容器内 /workspace 就是最新代码，无需 stash/unstash
-                    // 同时挂载 report 目录用于收集 Allure 结果
-                    
-                    sh """
-                        # 清理可能存在的同名容器（防御性编程）
-                        docker rm -f ${TEST_CONTAINER} || true
+                        echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
                         
-                        # 运行动态容器：
-                        # --rm: 停止后自动删除（真正"用完即走"）
-                        # -v ${WORKSPACE}:/workspace: 将 Jenkins 工作空间挂载到容器内
-                        # -w /workspace/API_Project: 设置工作目录到测试项目
-                        # --volumes-from: 也可继承数据卷，但直接挂载更清晰
-                        
-                        docker run --rm \
-                            --name ${TEST_CONTAINER} \
-                            -v "${WORKSPACE}:/workspace:rw" \
-                            -w /workspace/content/API_Project \
-                            -e PYTHONPATH=/workspace/content/API_Project \
-                            ${TEST_IMAGE} \
-                            pytest testcases/ -v \
-                                --alluredir=/workspace/content/API_Project/report --clean-alluredir --env=production --env-file=config/env_settings.yaml
-                                --tb=short \
-                                -rA
-                    """
-                    
-                    echo ">>> 动态容器执行完毕"
+                        sh """
+                            docker rm -f ${TEST_CONTAINER} || true
+                            
+                            echo ">>> [Master] 本地文件铁证:"
+                            ls -la content/API_Project/conftest.py || { echo "ERROR: Master 内无 conftest.py"; exit 1; }
+                            
+                            echo ">>> [Dynamic] 启动容器并执行测试..."
+                            docker run --rm \
+                                --name ${TEST_CONTAINER} \
+                                --volumes-from jenkins-master-cicd \
+                                -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                                -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                                -e LOGURU_COLORIZE=false \
+                                ${TEST_IMAGE} \
+                                pytest testcases/ -v \
+                                    --color=no \
+                                    --alluredir=report/allure-results \
+                                    --tb=short \
+                                    -rA \
+                                    --env=production \
+                                    --env-file=config/env_settings.yaml
+                        """
+                        // --tb=short 失败是只打印精简的Traceback；-rA测试结束后打印所有结果的摘要
+                        echo ">>> 动态容器执行完毕"
                 }
             }
         }
@@ -3073,8 +3209,9 @@ pipeline {
                     
                     // 检查 Allure 结果是否存在
                     def allureDir = 'content/API_Project/report/allure-results'
-                    def resultsExist = sh(returnStatus: true, script: "test -d ${allureDir} && test \"\\$(ls -A ${allureDir})\"")
-                    
+                    // groovy定义局部变量，存储allure结果目录
+                    def resultsExist = sh(returnStatus: true, script: "find ${allureDir} -type f 2>/dev/null | grep -q .")
+                    // 有文件返回0，无文件返回1（但是会报错），returnStatus: true的存在是为了避免程序崩溃。
                     if (resultsExist == 0) {
                         echo ">>> 发现 Allure 结果，生成报告..."
                         allure([
@@ -3087,6 +3224,7 @@ pipeline {
                     } else {
                         echo "⚠️ 警告：未发现 Allure 结果，可能测试未生成或目录为空"
                     }
+                    // 
                 }
             }
         }
@@ -3097,6 +3235,19 @@ pipeline {
     // --------------------------------------------------
     post {
         always {
+            // ✅ 构建结束后安全清理，保留 allure-results 用于报告
+            cleanWs(
+                cleanWhenNotBuilt: false,
+                deleteDirs: true,
+                notFailBuild: true,
+                patterns: [
+                    [pattern: '**/__pycache__/**', type: 'INCLUDE'],
+                    [pattern: '**/.pytest_cache/**', type: 'INCLUDE'],
+                    [pattern: '**/*.pyc', type: 'INCLUDE'],
+                    [pattern: 'content/API_Project/report/allure-results/**', type: 'EXCLUDE']
+                ]
+            )
+
             script {
                 echo ">>> 执行清理任务..."
                 
@@ -3128,7 +3279,7 @@ pipeline {
             script {
                 // 1. 钉钉通知
                 dingtalk(
-                    robot: "${DINGDING_CREDENTIALS}",  // 使用凭证 ID
+                    robot: "DINGDING_CREDENTIALS",  // 使用凭证 ID；jenkins自己会用当前字符串去系统找对应的value
                     type: 'MARKDOWN',
                     title: "✅ 构建成功: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     text: [
@@ -3142,7 +3293,7 @@ pipeline {
                         "**控制台**: [查看日志](${env.BUILD_URL}console)",
                         "---",
                         "📊 测试环境已自动清理，资源已释放"
-                    ].join("\n")
+                    ]
                 )
                 
                 // 2. 邮件通知
@@ -3172,7 +3323,7 @@ pipeline {
             script {
                 // 1. 钉钉失败通知（@所有人）
                 dingtalk(
-                    robot: "${DINGDING_CREDENTIALS}",
+                    robot: "DINGDING_CREDENTIALS",
                     type: 'MARKDOWN',
                     title: "❌ 构建失败: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     atAll: true,  // 失败时 @所有人
@@ -3186,7 +3337,7 @@ pipeline {
                         "**查看详情**: [控制台日志](${env.BUILD_URL}console)",
                         "---",
                         "🔴 请立即检查代码或联系 DevOps 工程师"
-                    ].join("\n")
+                    ]
                 )
                 
                 // 2. 邮件失败通知
@@ -3213,6 +3364,129 @@ pipeline {
         }
     }
 }
+// jenkins下配置的凭证或者工具凭证，可以直接使用凭证名，不用${}写法
+// --volumes-from jenkins-master-cicd 表示继承jenkins-master-cicd的全部挂载
+// -w设置容器内的工作目录为项目的根目录
+
+// 1.environment模块下是定义的环境变量是么？供当前pipeline下所有模块使用？这样类似的变量${BUILD_NUMBER}是jenkins自带的是么？
+// environment下定义的是全局环境变量，供pipeline全局使用；而${BUILD_NUMBER}是jenkins内置变量；
+// 不管自定义的变量还是jenkins内置变量均称呼为“环境变量”。
+// | 内置变量               | 含义                                |
+// | ------------------ | --------------------------------- |
+// | `${BUILD_NUMBER}`  | 当前构建序号                            |
+// | `${JOB_NAME}`      | 任务名称（如 `API-Automation-Pipeline`） |
+// | `${WORKSPACE}`     | 当前工作空间绝对路径                        |
+// | `${GIT_COMMIT}`    | 本次拉取的 Git commit hash             |
+// | `${GIT_BRANCH}`    | 当前分支（如 `main`）                    |
+// | `${env.BUILD_URL}` | 本次构建的 Jenkins URL                 |
+
+// 2.直接输入字符串就能获取到credentials的值么？GITEE_CREDENTIALS = 'gitee-credentials'
+
+
+// 3.options模块是设置jenkins下当前项目的参数是么？
+// 配置的当前流水线的元数据，不是业务参数，不会影响jenkins全局或其他任务
+
+// 4.stage可以写该模块的名字，那stages steps step可以么？
+// stages > stage > steps;只有stage带阶段名字，没有step；steps下是具体步骤，script{多个步骤}；
+// pipeline {
+//     stages {           // ← 只能叫 stages，复数，包裹所有阶段
+//         stage('A') {   // ← 叫 stage，单数，定义一个阶段
+//             steps {    // ← 只能叫 steps，复数，包裹该阶段的所有步骤
+//                 sh 'echo 1'   // ← 具体步骤指令，不写 step 关键字
+//                 echo '2'      // ← 另一个步骤
+//                 script { ... } // ← script 也是一个步骤
+//             }
+//         }
+//     }
+// }
+
+// 5.script可以放在steps下，那可以放在step下么？以及script模块作用是啥，可以放多个linux指令么？
+// script下是为了能够写groovy脚本，if/else;for;def 定义变量；try/catch;也能多个linux指令；
+
+// 6.dir('content/API_Project')是切换当前工作目录是么？会不会创建？
+// dir()只会切换，不会创建，不存在会报错；docker中地wordir会创建；
+
+// 7.构建镜像，会将上下文.当前路径下的全部内容加入镜像么？-t参数是什么作用？以及为什么要加上--build-arg？--no-cache强制重新安装是安装啥，重新构建么？还是？
+// // --no-cache 强制重新安装依赖，避免缓存导致新包漏装
+//                         sh """
+//                             docker build \
+//                                 --no-cache \
+//                                 --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple  \
+//                                 -t ${TEST_IMAGE} \
+//                                 -f Dockerfile.test \
+//                                 .
+//                         """
+// 不会全部进入镜像，只是当前路径下，且镜像代码文件使用到的文件（COPY）才会构建进入镜像中。但是是全部文件传递给docker deamon进行筛选
+// --build-arg PIP_INDEX_URL=url:想dockerfile.test文件传递构建是临时变量；-t tag标签的意思
+
+// 8.为什么要加sh """"""，我能用''''''替代双引号么？sh是shell脚本意思，不用&&链接么？当前sh使用完毕后，会自己关闭么？一个sh就是一个终端么？不加sh直接指令能运行么？有什么区别？个人觉得下面代码有问题，前面执行完，一般是没问题的返回0,那么后面就肯定会执行，执行了，会提示镜像缺失pyyaml，但事实不缺失。应该改为，{ echo "镜像构建成功"; exit 1; }
+// sh """
+//                             docker run --rm ${TEST_IMAGE} python -c "import yaml; print('PyYAML version:', yaml.__version__)" || { echo "ERROR: 镜像内缺少 PyYAML"; exit 1; }
+//                         """
+// 三个双引号支持变量插值，而三个单引号不支持插值${},但是都支持多行，多行不是指令；
+// sh """是shell脚本，因此可以多个指令，一个sh就是一个终端""""；&&用于连接多个指令echo && sh pipeline中没有，主要在docker file
+// liunx的判断逻辑是0为true,1为false
+
+// 9.要是前半段指令报错，那么后面就会保证程序正常是吧，为什么要加-f，此处是防御性变成是吧？我需要docker删除镜像 容器 卷的指令
+// docker rm -f ${TEST_CONTAINER} || true
+// -f启到一个强制删除作用，哪怕是运行中容器也无法逃脱命运。
+// 删除容器
+// docker rm 容器名 || true
+// 删除镜像，构建没变化还是一样快的
+// docker rmi 镜像名:标签 || true
+// 删除卷（慎用）
+// dcoker volume rm 卷名
+// 删除垃圾
+// docker system prune -a -f
+
+// 10.--volumes-from jenkins-master-cicd能直接是容器名字么？-w参数作用？数据是存储在卷中是么？容器没了，但卷中数据还在。
+// --volumes-from 继承容器的全部挂在卷，-w是设置容器启动后的工作路径。
+
+// 11.一下两个参数作用？
+// --tb=short \
+//  -rA \
+// 打印精简错误和测试全部结束后，答应一个摘要报告
+
+// 12.这两句语法看不懂
+// def allureDir = 'content/API_Project/report/allure-results'
+// def resultsExist = sh(returnStatus: true, script: "find ${allureDir} -type f 2>/dev/null | grep -q .")
+// 
+
+// 13.这个构建报告是构建到哪里？谁来构建
+// if (resultsExist == 0) {
+//                         echo ">>> 发现 Allure 结果，生成报告..."
+//                         allure([
+//                             includeProperties: false,
+//                             jdk: '',
+//                             properties: [],
+//                             reportBuildPolicy: 'ALWAYS',
+//                             results: [[path: "${allureDir}"]]
+//                         ])
+//                     } else {
+//                         echo "⚠️ 警告：未发现 Allure 结果，可能测试未生成或目录为空"
+//                     }
+// 由jenkins allure plugin构建，根据输入content/API_Project/report/allure-results/*.json，allure cli会处理，最后生成在临时目录，挂载至jenkins ui上
+
+// 14.这是有条件的清理是么？**和EXCLUDE什么作用？
+// cleanWs(
+//                 cleanWhenNotBuilt: false,
+//                 deleteDirs: true,
+//                 notFailBuild: true,
+//                 patterns: [
+//                     [pattern: '**/__pycache__/**', type: 'INCLUDE'],
+//                     [pattern: '**/.pytest_cache/**', type: 'INCLUDE'],
+//                     [pattern: '**/*.pyc', type: 'INCLUDE'],
+//                     [pattern: 'content/API_Project/report/allure-results/**', type: 'EXCLUDE']
+//                 ]
+//             )
+
+// 15.此处的env是什么鬼？是wsl下的.env文件还是前面的environment变量？还是什么？
+// ${env.JOB_NAME}"
+// env是jenkins内置的groovy对象，包含当前构建的所有环境变量。
+
+// 16.sh返回的状态码，0表示ture,其他表示有问题。
+
+// pipeline script from scm
 ```
 
 
@@ -3718,3 +3992,662 @@ Proxy → Recording Settings → Include → Add → 填入 Protocol: https, Hos
 快速生成python requests脚本，通过右键选择Copy cURL Request，再借助https://curlconverter.com/工具自定转化生成所需python requests代码。
 
 ![](../picturs/57.png)
+
+#### 7. Jemeter学习
+
+Jemeter（Apache Jmeter）是Apache开元的性能测试工具，核心作用是模拟大量并发用户想服务器发送请求，测试接口在压力下的表现。
+
+##### 1. 安装配置启动
+
+1. **下载**：https://jmeter.apache.org/download_jmeter.cgi
+
+   - 下载 `apache-jmeter-5.x.zip`（Windows）或 `.tgz`（Linux/Mac）
+
+2. **解压**，无需安装。
+
+3. **配置环境变量**，自己搜
+
+4. **启动**：
+
+   - Windows：`bin/jmeter.bat`（双击）
+   - Linux/Mac：`bin/jmeter.sh`
+   - win+r 输入jmeter(前提，已配置环境变量)
+
+   ![](../picturs/58.png)
+
+5. **汉化**（可选，不建议）：
+
+   - `Options → Choose Language → Chinese (Simplified)`
+
+> **注意**：JMeter 是 Java 写的，需提前装 JDK 8+。
+
+##### 2. 操作 1：线程组（Thread Group用户）—— 并发的心脏
+
+**位置**：右键测试计划 → 添加 → 线程（用户）→ 线程组
+
+![](../picturs/59.png)
+
+**核心参数**：
+
+| 参数                 | 含义                   | 示例                                 |
+| -------------------- | ---------------------- | ------------------------------------ |
+| **线程数（用户数）** | 模拟多少个虚拟用户     | 100 = 100 人同时操作                 |
+| **Ramp-Up 时间**     | **启动**全部线程的时长 | 10 秒 = 100 个用户在 10 秒内逐步启动 |
+| **循环次数**         | 每个用户执行几次       | 1 / 永远（持续压测）                 |
+
+**意义**:
+
+- 线程数 10，Ramp-Up 5s = 5 秒内陆续启动 10 个用户，模拟真实场景。
+- 线程数 1000，Ramp-Up 0 = 瞬间洪峰，看服务器会不会被打崩。
+
+![](../picturs/60.png)
+
+##### 3. HTTP 请求（HTTP Request行为）—— 发接口
+
+**位置**：右键线程组 → 添加 → 取样器 → HTTP 请求
+
+ 为什么是针对线程组，线程组就是用户，就是定义每一个用户的操作。
+
+**配置项**：
+
+| 字段             | 填什么                    | 对应 requests 代码            |
+| ---------------- | ------------------------- | ----------------------------- |
+| 协议             | `http` / `https`          | `requests.get('https://...')` |
+| 服务器名称或 IP  | `api.example.com`         | 域名或 IP                     |
+| 端口号           | `8080` / `443`            | 默认 80/443 可留空            |
+| 方法             | GET / POST / PUT / DELETE | `requests.post(...)`          |
+| 路径             | `/api/login`              | URL 路径                      |
+| 参数 / Body 数据 | 表单或 JSON               | `data=` / `json=`             |
+
+![](../picturs/61.png)
+
+![](../picturs/62.png)
+
+##### 4. HTTP 信息头管理器（Header Manager）
+
+**关键**：必须加 HTTP 信息头管理器，否则服务器不知道你发的是 JSON
+
+- **右键 HTTP 请求** → **添加 → 配置元件 → HTTP 信息头管理器**
+- 点 **添加**，填入：
+
+| 名称           | 值                 |
+| -------------- | ------------------ |
+| `Content-Type` | `application/json` |
+
+![](../picturs/63.png)
+
+##### 5. 查看结果树（View Results Tree）—— 调试神器
+
+**位置**：右键线程组 → 添加 → 监听器 → 查看结果树(线程组或者单个操作)
+
+**作用**：看每个请求的**请求头、请求体、响应头、响应体**，和 Charles 的 Request/Response 标签一样。
+
+**使用时机**：
+
+- 脚本调试阶段必开，确认请求发对了、返回正常。
+- **正式压测时关掉**，因为它特别耗内存，会拖垮 JMeter 本身。
+
+![](../picturs/64.png)
+
+正式压测时的替代方案（关掉查看结果树后看什么）
+
+| 监听器             | 作用                            | 内存占用 | 使用时机       |
+| ------------------ | ------------------------------- | -------- | -------------- |
+| **聚合报告**       | 看平均响应时间、吞吐量、错误率  | 极低     | 必开           |
+| **后端监听器**     | 把数据实时发到 InfluxDB/Grafana | 极低     | 大规模压测     |
+| **简单数据写入器** | 只写原始数据到 CSV，不展示      | 低       | 需要原始日志时 |
+| **汇总报告**       | 比聚合报告更精简的统计          | 极低     | 快速看结果     |
+
+##### 6. 断言（Assertions）—— 自动判定通过/失败
+
+除了返回状态码是判断是否通过，还可以通过assertion来进一步判断是否通过（更严格）
+
+| 断言类型      | 用途                     | 配置示例                                                     |
+| ------------- | ------------------------ | ------------------------------------------------------------ |
+| **响应断言**  | 判断响应文本包含某字符串 | 测试字段：响应文本；模式匹配规则：包含；测试模式：`"code":200` |
+| **JSON 断言** | 判断 JSON 字段值         | JSON Path：`$.code`；预期值：`200`                           |
+
+![](../picturs/65.png)
+
+##### 7. csv数据文件设置——参数化
+
+**位置**：右键线程组 → 添加 → 配置元件 → CSV 数据文件设置
+
+**作用**：从 Excel/CSV 读取测试数据，实现**数据驱动**，对应 pytest 的 `@pytest.mark.parametrize`。
+
+###### 1. 本地新建 `users.csv`：
+
+```plain
+username,password
+admin,123456
+user1,111111
+user2,222222
+```
+
+###### 2. JMeter 中配置：
+
+- 文件名：`users.csv`
+- 编码：`UTF-8`
+- 变量名称：`username,password`
+
+![](../picturs/66.png)
+
+###### 3. HTTP 请求里，用 `${username}` 和 `${password}` 引用：
+
+```json
+{"username": "${username}", "password": "${password}"}
+```
+
+![](../picturs/67.png)
+
+线程循环时**，每轮取 CSV 下一行数据，实现多用户登录。
+
+![](../picturs/68.png)
+
+##### 8. Aggregate Report——核心指标
+
+**关键指标解读**：
+
+| 指标                | 含义                      | 合格线参考 |
+| ------------------- | ------------------------- | ---------- |
+| **Samples**         | 总请求数                  | —          |
+| **Average**         | 平均响应时间（ms）        | < 500ms    |
+| **Median**          | 中位数响应时间            | < 500ms    |
+| **90% Line**        | 90% 请求低于此值          | < 1000ms   |
+| **95% Line**        | 95% 请求低于此值          | < 2000ms   |
+| **Error %**         | 错误率                    | < 0.1%     |
+| **Throughput**      | 吞吐量（TPS，每秒事务数） | 越高越好   |
+| **Received KB/sec** | 每秒接收数据量            | 看带宽     |
+
+![](../picturs/69.png)
+
+##### 9. 命令行执行（非GUI模式）——CI/CD必备
+
+GUI 模式（图形界面）只适合调试，正式压测必须用命令行，省内存、更稳定。
+
+```bash
+jmeter -n -t ${JMETER_SCRIPT} \
+    -l report/jmeter-results.jtl \
+    -e -o report/jmeter-report \
+    -Jserver.rmi.ssl.disable=true \
+    -Jjmeter.save.saveservice.output_format=csv \
+    -Jjmeter.save.saveservice.assertion_results_failure_message=true
+```
+
+```powershell
+PS C:\Users\16531\Desktop\selenium-learning\content\API_Project\jmeter> jmeter -n -t "C:\Users\16531\Desktop\selenium-learning\content\API_Project\jmeter\api_load_test.jmx" -l "C:\Users\16531\Desktop\result.jtl" -e -o "C:\Users\16531\Desktop\report"
+WARN StatusConsoleListener The use of package scanning to locate plugins is deprecated and will be removed in a future release
+WARN StatusConsoleListener The use of package scanning to locate plugins is deprecated and will be removed in a future release
+WARN StatusConsoleListener The use of package scanning to locate plugins is deprecated and will be removed in a future release
+WARN StatusConsoleListener The use of package scanning to locate plugins is deprecated and will be removed in a future release
+Creating summariser <summary>
+Created the tree successfully using C:\Users\16531\Desktop\selenium-learning\content\API_Project\jmeter\api_load_test.jmx
+Starting standalone test @ 2026 May 16 16:52:18 CST (1778921538446)
+Waiting for possible Shutdown/StopTestNow/HeapDump/ThreadDump message on port 4445
+summary +     18 in 00:00:12 =    1.5/s Avg:   989 Min:   270 Max:  2535 Err:     0 (0.00%) Active: 1 Started: 2 Finished: 1
+summary +      2 in 00:00:01 =    2.9/s Avg:   338 Min:   316 Max:   360 Err:     0 (0.00%) Active: 0 Started: 2 Finished: 2
+summary =     20 in 00:00:13 =    1.6/s Avg:   924 Min:   270 Max:  2535 Err:     0 (0.00%)
+Tidying up ...    @ 2026 May 16 16:52:31 CST (1778921551287)
+... end of run
+```
+
+
+
+| 参数    | 全称/含义         | 作用                                                         |
+| ------- | ----------------- | ------------------------------------------------------------ |
+| `-n`    | **n**o GUI        | 非图形界面模式，必须加，正式压测都用这个                     |
+| `-t`    | **t**estfile      | 指定要运行的 `.jmx` 脚本路径                                 |
+| `-l`    | **l**og file      | 指定原始结果日志文件，后缀 `.jtl`，存每次请求的详细数据      |
+| `-e`    | **e**nd of test   | 测试结束后，**自动生成 HTML 报告**                           |
+| `-o`    | **o**utput folder | 指定 HTML 报告的**输出目录**（必须是空目录或不存在）         |
+| `-Jxxx` | 设置 JMeter 属性  | 覆盖 `jmeter.properties` 里的配置，`-J` 是命令行传参的固定前缀 |
+
+#### 8. 方案升级
+
+##### 1. 方案总览
+
+| 模块         | 现有能力        | 新增能力                      |
+| ------------ | --------------- | ----------------------------- |
+| **镜像**     | Python + Pytest | **+ OpenJDK + JMeter**        |
+| **测试阶段** | Pytest 功能测试 | **+ JMeter 性能测试（串行）** |
+| **报告体系** | Allure 功能报告 | **+ JMeter HTML 性能报告**    |
+| **通知体系** | 钉钉 + 邮件     | **+ JMeter 报告入口**         |
+
+**数据流（云端 ECS）**：
+
+```plain
+Gitee 代码仓库
+    ↓
+Jenkins Master (阿里云 ECS)
+    ├── 构建镜像 (Python + Pytest + JMeter)
+    ├── 容器A: 跑 Pytest → 产出 allure-results
+    ├── 容器B: 跑 JMeter  → 产出 jmeter-report + jmeter-results.jtl
+    ├── 生成 Allure 报告
+    ├── 发布 JMeter HTML 报告
+    ↓
+钉钉 / 邮件（双报告链接）
+```
+
+##### 2. 修改清单
+
+| 文件                                           | 动作     | 说明                                             |
+| ---------------------------------------------- | -------- | ------------------------------------------------ |
+| `content/API_Project/Dockerfile.test`          | **修改** | 在原有镜像中叠加 JMeter                          |
+| `Jenkinsfile`                                  | **修改** | 增加 JMeter Stage + 报告发布 + 通知增强          |
+| `content/API_Project/jmeter/api_load_test.jmx` | **新增** | JMeter 测试脚本（你在 Windows GUI 设计好后上传） |
+
+##### 3. 修改`content/API_Project/Dockerfile.test`
+
+**核心变化**：在原有 Python 镜像基础上，安装 `openjdk-17-jre-headless` 和 JMeter
+
+```
+# ==========================================
+# 文件名：content/API_Project/Dockerfile.test
+# 用途：测试运行环境（国内源加速，内含 Pytest + JMeter）
+# ==========================================
+FROM python:3.12-slim
+
+# 更换 Debian 源为阿里云镜像
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+
+# 安装编译依赖 + JMeter 依赖（OpenJDK）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libffi-dev \
+    openjdk-17-jre-headless \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 先复制依赖文件，利用 Docker 缓存层
+COPY requirements.txt .
+
+# 使用清华 PyPI 镜像安装 Python 依赖
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    -r requirements.txt
+
+# ==========================================
+# 安装 JMeter（清华镜像加速，版本 5.6.3）
+# ==========================================
+ENV JMETER_VERSION=5.6.3
+RUN wget -q https://mirrors.tuna.tsinghua.edu.cn/apache/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz \
+    && tar -xzf apache-jmeter-${JMETER_VERSION}.tgz -C /opt \
+    && ln -s /opt/apache-jmeter-${JMETER_VERSION}/bin/jmeter /usr/local/bin/jmeter \
+    && rm apache-jmeter-${JMETER_VERSION}.tgz \
+    && jmeter --version | head -n 1
+
+# 复制项目源码（Jenkins 构建时注入）
+COPY . .
+
+# 创建报告目录（Allure + JMeter 共用父目录）
+RUN mkdir -p /app/report/allure-results /app/report/jmeter-report
+
+# 默认入口（会被 Jenkins Pipeline 覆盖）
+CMD ["pytest", "--version"]
+```
+
+##### 4. 修改根目录Jenkinsfile
+
+**核心变化**：
+
+- 增加 `JMETER_CONTAINER` 和 `JMETER_SCRIPT` 环境变量
+- 增加 **Run JMeter Performance Tests** Stage（非 GUI 模式）
+- 增加 **Publish JMeter Report** Stage（HTML 报告发布）
+- `post` 中的 `cleanWs` **排除** `jmeter-report` 和 `jmeter-results.jtl`
+- 钉钉/邮件通知中增加 **JMeter 报告入口**
+
+```groovy
+// ==========================================
+// 文件名：Jenkinsfile（位于项目根目录）
+// 用途：完整 CI/CD 流程：Gitee → 动态容器 → Pytest+Allure → JMeter性能测试 → 钉钉+邮件
+// ==========================================
+
+pipeline {
+    agent any
+
+    environment {
+        // 镜像与容器命名（带构建号隔离，防止并发冲突）
+        TEST_IMAGE = "api-test-env:${BUILD_NUMBER}"
+        TEST_CONTAINER = "api-test-runner-${BUILD_NUMBER}"
+        JMETER_CONTAINER = "jmeter-runner-${BUILD_NUMBER}"
+
+        // Gitee 凭证 ID（需在 Jenkins 中预先配置）
+        GITEE_CREDENTIALS = 'gitee-credentials'
+
+        // 钉钉 Webhook 凭证 ID
+        DINGDING_CREDENTIALS = 'dingding-token'
+
+        // 邮箱接收列表（逗号分隔）
+        EMAIL_RECIPIENTS = '19015437827@163.com,206432984@qq.com,2567195697@qq.com'
+
+        // JMeter 脚本路径（相对于 WORKSPACE 根目录）
+        JMETER_SCRIPT = 'content/API_Project/jmeter/api_load_test.jmx'
+    }
+
+    options {
+        // 保留最近 10 次构建记录，节省磁盘
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        // 禁止并发构建（避免动态容器名冲突）
+        disableConcurrentBuilds()
+        // 添加时间戳到控制台输出
+        timestamps()
+    }
+
+    stages {
+
+        // --------------------------------------------------
+        // Stage 1: 构建测试镜像（国内缓存加速，内含 Python + JMeter）
+        // --------------------------------------------------
+        stage('Build Test Image') {
+            steps {
+                script {
+                    dir('content/API_Project') {
+                        echo ">>> 正在构建测试镜像: ${TEST_IMAGE}"
+
+                        sh """
+                            docker build \
+                                --no-cache \
+                                -t ${TEST_IMAGE} \
+                                -f Dockerfile.test \
+                                .
+                        """
+
+                        // 铁证校验：镜像内必须有 PyYAML
+                        sh """
+                            docker run --rm ${TEST_IMAGE} python -c "import yaml; print('PyYAML version:', yaml.__version__)" || { echo "ERROR: 镜像内缺少 PyYAML"; exit 1; }
+                        """
+
+                        // 铁证校验：镜像内必须有 JMeter
+                        sh """
+                            docker run --rm ${TEST_IMAGE} jmeter --version | head -n 1 || { echo "ERROR: 镜像内缺少 JMeter"; exit 1; }
+                        """
+
+                        echo ">>> 镜像构建完成"
+                    }
+                }
+            }
+        }
+
+        // --------------------------------------------------
+        // Stage 2: 运行动态容器执行 API 功能测试（Pytest）
+        // --------------------------------------------------
+        stage('Run Tests in Dynamic Container') {
+            steps {
+                script {
+                    echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
+
+                    sh """
+                        docker rm -f ${TEST_CONTAINER} || true
+
+                        echo ">>> [Master] 本地文件铁证:"
+                        ls -la content/API_Project/conftest.py || { echo "ERROR: Master 内无 conftest.py"; exit 1; }
+
+                        echo ">>> [Dynamic] 启动容器并执行 Pytest..."
+                        docker run --rm \
+                            --name ${TEST_CONTAINER} \
+                            --volumes-from jenkins-master-cicd \
+                            -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                            -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                            -e LOGURU_COLORIZE=false \
+                            ${TEST_IMAGE} \
+                            pytest testcases/ -v \
+                                --color=no \
+                                --alluredir=report/allure-results \
+                                --tb=short \
+                                -rA \
+                                --env=production \
+                                --env-file=config/env_settings.yaml
+                    """
+
+                    echo ">>> Pytest 功能测试执行完毕"
+                }
+            }
+        }
+
+        // --------------------------------------------------
+        // Stage 3: 执行 JMeter 性能测试（非 GUI 模式）
+        // --------------------------------------------------
+        stage('Run JMeter Performance Tests') {
+            steps {
+                script {
+                    echo ">>> 检查 JMeter 脚本是否存在..."
+
+                    // 防御性编程：脚本不存在则跳过，避免阻断流水线
+                    def scriptExist = sh(returnStatus: true, script: "test -f ${JMETER_SCRIPT}")
+                    if (scriptExist != 0) {
+                        echo "⚠️ 未找到 JMeter 脚本: ${JMETER_SCRIPT}，跳过性能测试阶段"
+                        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                            error("JMeter 脚本缺失，已标记为 UNSTABLE 并跳过")
+                        }
+                        return
+                    }
+
+                    echo ">>> 启动 JMeter 性能测试容器: ${JMETER_CONTAINER}"
+
+                    sh """
+                        docker rm -f ${JMETER_CONTAINER} || true
+
+                        docker run --rm \
+                            --name ${JMETER_CONTAINER} \
+                            --volumes-from jenkins-master-cicd \
+                            -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                            -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                            ${TEST_IMAGE} \
+                            bash -c "rm -rf report/jmeter-report report/jmeter-results.jtl && jmeter -n -t ${JMETER_SCRIPT} -l report/jmeter-results.jtl -e -o report/jmeter-report -Jserver.rmi.ssl.disable=true -Jjmeter.save.saveservice.output_format=csv -Jjmeter.save.saveservice.assertion_results_failure_message=true"
+                    """
+                    // 禁用ssl,避免被master和slave通信干扰，反正是本机运行
+                    // xml体积大，csv体积小，便于理解
+                    // 默认只记成功/失败；开启后.jtl里能看到具体哪一个断言失败
+                    echo ">>> JMeter 性能测试执行完毕"
+                }
+            }
+        }
+
+        // --------------------------------------------------
+        // Stage 4: 生成 Allure 报告（功能测试）
+        // --------------------------------------------------
+        stage('Generate Allure Report') {
+            steps {
+                script {
+                    echo ">>> 生成 Allure 报告..."
+
+                    def allureDir = 'content/API_Project/report/allure-results'
+                    // 定义变量存报告目录的相对路径
+                    def resultsExist = sh(returnStatus: true, script: "find ${allureDir} -type f 2>/dev/null | grep -q .")
+                    // 
+
+                    if (resultsExist == 0) {
+                        echo ">>> 发现 Allure 结果，生成报告..."
+                        allure([
+                            includeProperties: false,
+                            jdk: '',
+                            properties: [],
+                            reportBuildPolicy: 'ALWAYS',
+                            results: [[path: "${allureDir}"]]
+                        ])
+                    } else {
+                        echo "⚠️ 警告：未发现 Allure 结果，可能测试未生成或目录为空"
+                    }
+                }
+            }
+        }
+
+        // --------------------------------------------------
+        // Stage 5: 发布 JMeter HTML 性能报告
+        // --------------------------------------------------
+        stage('Publish JMeter Report') {
+            steps {
+                script {
+                    def jmeterReportDir = 'content/API_Project/report/jmeter-report'
+                    def reportExist = sh(returnStatus: true, script: "test -d ${jmeterReportDir} && test -f ${jmeterReportDir}/index.html")
+                    // 无论成与否都是返回数字，不会中断，成功返回0，失败返回别的数字。
+
+                    if (reportExist == 0) {
+                        echo ">>> 发布 JMeter HTML 报告..."
+                        publishHTML(target: [
+                            allowMissing: false,
+                            alwaysLinkToLastBuild: true,
+                            keepAll: true,
+                            reportDir: "${jmeterReportDir}",
+                            reportFiles: 'index.html',
+                            reportName: 'JMeter Performance Report'
+                        ])
+                    } else {
+                        echo "⚠️ 未找到 JMeter HTML 报告，跳过发布"
+                    }
+                }
+            }
+        }
+    }
+
+    // --------------------------------------------------
+    // Post 构建处理：通知、归档与清理
+    // --------------------------------------------------
+    post {
+        always {
+            // 安全清理：保留 Allure 结果、JMeter 报告和 JTL 原始数据
+            cleanWs(
+                cleanWhenNotBuilt: false,
+                deleteDirs: true,
+                notFailBuild: true,
+                patterns: [
+                    [pattern: '**/__pycache__/**', type: 'INCLUDE'],
+                    [pattern: '**/.pytest_cache/**', type: 'INCLUDE'],
+                    [pattern: '**/*.pyc', type: 'INCLUDE'],
+                    [pattern: 'content/API_Project/report/allure-results/**', type: 'EXCLUDE'],
+                    [pattern: 'content/API_Project/report/jmeter-report/**', type: 'EXCLUDE'],
+                    [pattern: 'content/API_Project/report/jmeter-results.jtl', type: 'EXCLUDE']
+                ]
+            )
+
+            script {
+                echo ">>> 执行清理任务..."
+
+                // 清理动态容器与镜像
+                sh """
+                    docker rmi ${TEST_IMAGE} || true
+                    docker rm -f ${TEST_CONTAINER} || true
+                    docker rm -f ${JMETER_CONTAINER} || true
+                """
+
+                // 归档 JMeter 原始数据（即使 HTML 发布失败，也能下载 JTL 自行分析）
+                archiveArtifacts(
+                    artifacts: 'content/API_Project/report/jmeter-results.jtl',
+                    allowEmptyArchive: true,
+                    onlyIfSuccessful: false
+                )
+
+                // 二次清理（保留关键产物）
+                cleanWs(
+                    cleanWhenNotBuilt: false,
+                    deleteDirs: true,
+                    notFailBuild: true,
+                    patterns: [
+                        [pattern: '**/__pycache__/**', type: 'INCLUDE'],
+                        [pattern: '**/.pytest_cache/**', type: 'INCLUDE'],
+                        [pattern: '**/*.pyc', type: 'INCLUDE'],
+                        [pattern: 'content/API_Project/report/allure-results/**', type: 'EXCLUDE'],
+                        [pattern: 'content/API_Project/report/jmeter-report/**', type: 'EXCLUDE'],
+                        [pattern: 'content/API_Project/report/jmeter-results.jtl', type: 'EXCLUDE']
+                    ]
+                )
+            }
+        }
+
+        success {
+            script {
+                // 1. 钉钉通知（增加 JMeter 报告入口）
+                dingtalk(
+                    robot: "${DINGDING_CREDENTIALS}",
+                    type: 'MARKDOWN',
+                    title: "✅ 构建成功: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    text: [
+                        "### 🎉 API 自动化测试 + 性能测试 构建成功",
+                        "---",
+                        "**项目**: ${env.JOB_NAME}",
+                        "**构建号**: ${env.BUILD_NUMBER}",
+                        "**分支**: ${env.GIT_BRANCH}",
+                        "**持续时间**: ${currentBuild.durationString}",
+                        "**Allure 报告**: [点击查看](${env.BUILD_URL}allure/)",
+                        "**JMeter 报告**: [点击查看](${env.BUILD_URL}JMeter_20Performance_20Report/)",
+                        "**控制台**: [查看日志](${env.BUILD_URL}console)",
+                        "---",
+                        "📊 动态容器与性能测试环境已自动清理，资源已释放"
+                    ].join("\n")
+                )
+
+                // 2. 邮件通知
+                emailext(
+                    subject: "✅ 构建成功: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        <h2 style="color: #2ecc71;">API 自动化测试 + 性能测试 构建成功</h2>
+                        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+                            <tr><td style="background-color: #f2f2f2;"><b>项目名称</b></td><td>${env.JOB_NAME}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>构建编号</b></td><td>${env.BUILD_NUMBER}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>Git 提交</b></td><td>${env.GIT_COMMIT?.take(7)}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>构建时长</b></td><td>${currentBuild.durationString}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>Allure 报告</b></td><td><a href="${env.BUILD_URL}allure/">点击查看详细报告</a></td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>JMeter 性能报告</b></td><td><a href="${env.BUILD_URL}JMeter_20Performance_20Report/">点击查看性能测试报告</a></td></tr>
+                        </table>
+                        <p>动态测试容器与 JMeter 容器已自动销毁，资源已回收。</p>
+                    """,
+                    to: "${EMAIL_RECIPIENTS}",
+                    mimeType: 'text/html'
+                )
+            }
+        }
+
+        failure {
+            script {
+                // 1. 钉钉失败通知
+                dingtalk(
+                    robot: "${DINGDING_CREDENTIALS}",
+                    type: 'MARKDOWN',
+                    title: "❌ 构建失败: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    atAll: true,
+                    text: [
+                        "### ⚠️ API 自动化测试 / 性能测试 构建失败",
+                        "---",
+                        "**项目**: ${env.JOB_NAME}",
+                        "**构建号**: ${env.BUILD_NUMBER}",
+                        "**失败阶段**: ${env.STAGE_NAME}",
+                        "**Git 提交**: ${env.GIT_COMMIT?.take(7)}",
+                        "**查看详情**: [控制台日志](${env.BUILD_URL}console)",
+                        "---",
+                        "🔴 请立即检查代码、JMeter 脚本或联系 DevOps 工程师"
+                    ].join("\n")
+                )
+
+                // 2. 邮件失败通知
+                emailext(
+                    subject: "❌ 构建失败: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        <h2 style="color: #e74c3c;">API 自动化测试 / 性能测试 构建失败</h2>
+                        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+                            <tr><td style="background-color: #f2f2f2;"><b>项目名称</b></td><td>${env.JOB_NAME}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>构建编号</b></td><td>${env.BUILD_NUMBER}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>失败阶段</b></td><td>${env.STAGE_NAME}</td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>错误日志</b></td><td><a href="${env.BUILD_URL}console">点击查看控制台</a></td></tr>
+                        </table>
+                        <p style="color: #c0392b;"><b>动态容器与 JMeter 容器已销毁，需手动重跑构建调试。</b></p>
+                    """,
+                    to: "${EMAIL_RECIPIENTS}",
+                    mimeType: 'text/html'
+                )
+            }
+        }
+
+        unstable {
+            echo "⚠️ 构建状态不稳定（有测试用例失败或 JMeter 脚本缺失，但未阻断流水线）"
+        }
+    }
+}
+```
+
+##### 5. 新增 content/API_Project/jmeter/api_load_test.jmx
+
+这个文件**不能手写**，必须用 JMeter GUI 生成。操作步骤：
+
+前提已经配置好的线程组，文件选择save test plan as，保存文件后，需要将对应的CSV Data Set Config文件与前者在同一个目录下，同时需要更改脚本文件下的绝对路径为相对路径。
