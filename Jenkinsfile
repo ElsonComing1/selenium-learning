@@ -79,32 +79,37 @@ pipeline {
         stage('Run Tests in Dynamic Container') {
             steps {
                 script {
-                    echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
+                    // ✅ 关键：catchError 让 pytest 失败时不阻断流水线
+                    // buildResult='UNSTABLE' 表示整体构建继续，但标记为不稳定
+                    // stageResult='FAILURE' 表示当前阶段自身标记为失败（便于追溯）
+                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                        echo ">>> 启动动态测试容器: ${TEST_CONTAINER}"
 
-                    sh """
-                        docker rm -f ${TEST_CONTAINER} || true
+                        sh """
+                            docker rm -f ${TEST_CONTAINER} || true
 
-                        echo ">>> [Master] 本地文件铁证:"
-                        ls -la content/API_Project/conftest.py || { echo "ERROR: Master 内无 conftest.py"; exit 1; }
+                            echo ">>> [Master] 本地文件铁证:"
+                            ls -la content/API_Project/conftest.py || { echo "ERROR: Master 内无 conftest.py"; exit 1; }
 
-                        echo ">>> [Dynamic] 启动容器并执行 Pytest..."
-                        docker run --rm \
-                            --name ${TEST_CONTAINER} \
-                            --volumes-from jenkins-master-cicd \
-                            -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                            -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                            -e LOGURU_COLORIZE=false \
-                            ${TEST_IMAGE} \
-                            pytest testcases/ -v \
-                                --color=no \
-                                --alluredir=report/allure-results \
-                                --tb=short \
-                                -rA \
-                                --env=production \
-                                --env-file=config/env_settings.yaml
-                    """
+                            echo ">>> [Dynamic] 启动容器并执行 Pytest..."
+                            docker run --rm \
+                                --name ${TEST_CONTAINER} \
+                                --volumes-from jenkins-master-cicd \
+                                -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                                -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                                -e LOGURU_COLORIZE=false \
+                                ${TEST_IMAGE} \
+                                pytest testcases/ -v \
+                                    --color=no \
+                                    --alluredir=report/allure-results \
+                                    --tb=short \
+                                    -rA \
+                                    --env=production \
+                                    --env-file=config/env_settings.yaml
+                        """
 
-                    echo ">>> Pytest 功能测试执行完毕"
+                        echo ">>> Pytest 功能测试执行完毕"
+                    }
                 }
             }
         }
@@ -114,39 +119,41 @@ pipeline {
         // --------------------------------------------------
         stage('Run JMeter Performance Tests') {
             steps {
-                script {
-                    echo ">>> 检查 JMeter 脚本是否存在..."
+                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                    script {
+                        echo ">>> 检查 JMeter 脚本是否存在..."
 
-                    // 宿主机上检查完整路径
-                    def scriptExist = sh(returnStatus: true, script: "test -f ${JMETER_SCRIPT_HOST}")
-                    if (scriptExist != 0) {
-                        echo "⚠️ 未找到 JMeter 脚本: ${JMETER_SCRIPT_HOST}，跳过性能测试阶段"
-                        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                            error("JMeter 脚本缺失，已标记为 UNSTABLE 并跳过")
+                        // 宿主机上检查完整路径
+                        def scriptExist = sh(returnStatus: true, script: "test -f ${JMETER_SCRIPT_HOST}")
+                        if (scriptExist != 0) {
+                            echo "⚠️ 未找到 JMeter 脚本: ${JMETER_SCRIPT_HOST}，跳过性能测试阶段"
+                            catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                                error("JMeter 脚本缺失，已标记为 UNSTABLE 并跳过")
+                            }
+                            return
                         }
-                        return
+
+                        echo ">>> 启动 JMeter 性能测试容器: ${JMETER_CONTAINER}"
+
+                        sh """
+                            docker rm -f ${JMETER_CONTAINER} || true
+
+                            docker run --rm \
+                                --name ${JMETER_CONTAINER} \
+                                --volumes-from jenkins-master-cicd \
+                                -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                                -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
+                                ${TEST_IMAGE} \
+                                bash -c 'rm -rf report/jmeter-report report/jmeter-results.jtl && jmeter -n -t ${JMETER_SCRIPT_CONTAINER} \
+                                    -l report/jmeter-results.jtl \
+                                    -e -o report/jmeter-report \
+                                    -Jserver.rmi.ssl.disable=true \
+                                    -Jjmeter.save.saveservice.output_format=csv \
+                                    -Jjmeter.save.saveservice.assertion_results_failure_message=true'
+                        """
+
+                        echo ">>> JMeter 性能测试执行完毕"
                     }
-
-                    echo ">>> 启动 JMeter 性能测试容器: ${JMETER_CONTAINER}"
-
-                    sh """
-                        docker rm -f ${JMETER_CONTAINER} || true
-
-                        docker run --rm \
-                            --name ${JMETER_CONTAINER} \
-                            --volumes-from jenkins-master-cicd \
-                            -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                            -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                            ${TEST_IMAGE} \
-                            bash -c 'rm -rf report/jmeter-report report/jmeter-results.jtl && jmeter -n -t ${JMETER_SCRIPT_CONTAINER} \
-                                -l report/jmeter-results.jtl \
-                                -e -o report/jmeter-report \
-                                -Jserver.rmi.ssl.disable=true \
-                                -Jjmeter.save.saveservice.output_format=csv \
-                                -Jjmeter.save.saveservice.assertion_results_failure_message=true'
-                    """
-
-                    echo ">>> JMeter 性能测试执行完毕"
                 }
             }
         }
