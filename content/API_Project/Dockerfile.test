@@ -46,22 +46,24 @@ RUN wget -q https://mirrors.tuna.tsinghua.edu.cn/apache/jmeter/binaries/apache-j
     && rm apache-jmeter-${JMETER_VERSION}.tgz \
     && jmeter --version | head -n 1
 
-# ✅ 关键修复：写入 user.properties，确保 Dashboard 报告能读取到完整字段
+# ✅ 精简版 user.properties：只保留 Dashboard 报告必需的标准列
+# 关键：绝对不能有 sample_count / error_count / encoding / hostname
 RUN printf '%s\n' \
     'jmeter.save.saveservice.output_format=csv' \
+    'jmeter.save.saveservice.time=true' \
+    'jmeter.save.saveservice.timestamp_format=ms' \
+    'jmeter.save.saveservice.label=true' \
     'jmeter.save.saveservice.response_code=true' \
     'jmeter.save.saveservice.response_message=true' \
-    'jmeter.save.saveservice.successful=true' \
     'jmeter.save.saveservice.thread_name=true' \
-    'jmeter.save.saveservice.time=true' \
-    'jmeter.save.saveservice.latency=true' \
-    'jmeter.save.saveservice.connect_time=true' \
+    'jmeter.save.saveservice.data_type=true' \
+    'jmeter.save.saveservice.successful=true' \
     'jmeter.save.saveservice.bytes=true' \
     'jmeter.save.saveservice.sent_bytes=true' \
-    'jmeter.save.saveservice.url=true' \
-    'jmeter.save.saveservice.label=true' \
+    'jmeter.save.saveservice.latency=true' \
+    'jmeter.save.saveservice.connect_time=true' \
     'jmeter.save.saveservice.idle_time=true' \
-    'jmeter.save.saveservice.data_type=true' \
+    'jmeter.save.saveservice.url=true' \
     'jmeter.save.saveservice.assertions=true' \
     'jmeter.save.saveservice.assertion_results_failure_message=true' \
     > /opt/apache-jmeter-${JMETER_VERSION}/bin/user.properties
