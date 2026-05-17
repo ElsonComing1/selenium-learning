@@ -4780,7 +4780,17 @@ curl -L -o /opt/monitoring/grafana/dashboards-json/jmeter-live.json \
   || echo "⚠️ 外网下载失败，下面提供手动导入方案"
 ```
 
-如果curl出错，后面会有其他你不措施。
+如果curl出错，采用下面操作：
+
+1. 浏览器打开 `http://106.14.250.120:3000`（需要已经启动容器）
+2. 左侧 **+ → Import**
+3. **Import via grafana.com**：输入 ID `5496`（这是全球通用的 JMeter 经典看板）
+4. 选择数据源 **InfluxDB-JMeter**
+5. 点 **Import**
+
+> ID 5496 是 Grafana 官方社区下载量最高的 JMeter 看板，包含 15+ 个专业图表，开箱即用。
+
+![](../picturs/71.png)
 
 4. 启动监控栈
 
@@ -4799,6 +4809,37 @@ docker exec influxdb influx -execute "CREATE DATABASE jmeter"
 5. 阿里云安全组放行端口
 
 ![](../picturs/70.png)
+
+6. 配置实时刷新
+
+Grafana 默认不会自动刷新，需要配置：
+
+![](../picturs/72.png)
+
+###### 3. 修改Jmeter脚本（在Windows GUI里操作）
+
+打开 api_load_test.jmx，加 1 个元件：
+
+1. **右键 Thread Group1** → **Add** → **Listener** → **Backend Listener**
+2. 按下图配置：
+
+| 字段                                | 填写值                                       | 说明                       |
+| ----------------------------------- | -------------------------------------------- | -------------------------- |
+| **Backend Listener Implementation** | `InfluxDBBackendListenerClient`              | 下拉选择                   |
+| **influxdbUrl**                     | `http://106.14.250.120:8086/write?db=jmeter` | ECS 公网 IP                |
+| **application**                     | `api-automation`                             | 应用名，随意               |
+| **measurement**                     | `jmeter`                                     | 表名，保持默认             |
+| **summaryOnly**                     | `false`                                      | 记录每个采样器，不只是汇总 |
+| **samplersRegex**                   | `.*`                                         | 匹配所有请求               |
+| **percentiles**                     | `90;95;99`                                   | 计算 P90/P95/P99           |
+| **testTitle**                       | `API-Pipeline`                               | 测试标题                   |
+| **eventTags**                       | `env=production`                             | 标签                       |
+
+3. **File → Save Test Plan As...** 覆盖保存
+
+4. 上传 Gitee
+
+> **Backend Listener 的作用**：JMeter 每发一个请求，就实时往 InfluxDB 写一条数据。压测过程中 Grafana 曲线就会实时跳动。
 
 ##### 8. 执行与验证
 
