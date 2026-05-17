@@ -63,12 +63,10 @@ RUN printf '%s\n' \
     'jmeter.save.saveservice.sample_count=true' \
     'jmeter.save.saveservice.idle_time=true' \
     'jmeter.save.saveservice.label=true' \
-    'jmeter.save.saveservice.timestamp_format=yyyy/MM/dd HH:mm:ss.SSS' \
     'jmeter.save.saveservice.assertion_results_failure_message=true' \
     'jmeter.save.saveservice.data_type=true' \
     'jmeter.save.saveservice.encoding=true' \
     'jmeter.save.saveservice.hostname=true' \
-    'jmeter.save.saveservice.print_milliseconds=true' \
     > /opt/apache-jmeter-${JMETER_VERSION}/bin/user.properties
 
 # 复制项目源码
