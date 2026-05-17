@@ -636,9 +636,7 @@ if __name__=="__main__":
 
 ###### 1. 框架
 
-```bash
-
-```
+见gitee | github
 
 ###### 2. 环境配置
 
@@ -4704,14 +4702,17 @@ services:
     restart: unless-stopped
     ports:
       - "8086:8086"
+      # -表示数组元素，带这个的缩进下，都是ports的元素
     environment:
       - INFLUXDB_DB=jmeter
+      # influxdb初始化时，会创建jmeter数据库
       - INFLUXDB_ADMIN_USER=admin
       - INFLUXDB_ADMIN_PASSWORD=admin123
     volumes:
       - influxdb_data:/var/lib/influxdb
     networks:
       - monitoring
+      # 自定义网络名字，对应下面的value bridge
 
   grafana:
     image: grafana/grafana:9.5.20
@@ -4723,6 +4724,7 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_INSTALL_PLUGINS=
+      # 空表示不安装
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/datasources:/etc/grafana/provisioning/datasources
@@ -4732,6 +4734,7 @@ services:
       - monitoring
     depends_on:
       - influxdb
+      # 启动顺序依赖，grafana需要influxdb传递数据
 
 volumes:
   influxdb_data:
@@ -4857,19 +4860,30 @@ git push
 
 构建页面的 Stage View 应出现以下阶段：
 
+![](../picturs/73.png)
 
+###### 3. 查看报告
 
-###### 3. 检查构建日志关键输出
+1. allure 报告
 
+![](../picturs/74.png)
 
+![](../picturs/75.png)
 
-###### 4. 查看报告
+2. jmeter实时动态报告
 
+![](../picturs/76.gif)
 
+###### 5. 钉钉消息&邮件
 
-###### 5. 查看邮件
+任意连接均能打开，分别对应allure报告，Grafana实时监控，运行控制台信息链接。
 
+![](../picturs/77.png)
 
+![](../picturs/78.png)
 
 ###### 6. 下载原始数据
 
+已经运行数据均可以下载
+
+![](../picturs/79.png)
