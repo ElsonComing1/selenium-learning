@@ -52,7 +52,7 @@ RUN wget -q https://mirrors.tuna.tsinghua.edu.cn/apache/jmeter/binaries/apache-j
 RUN printf '%s\n' \
     'jmeter.save.saveservice.output_format=csv' \
     'jmeter.save.saveservice.time=true' \
-    'jmeter.save.saveservice.timestamp_format=yyyy/MM/dd HH:mm:ss.SSS' \
+    'jmeter.save.saveservice.timestamp_format=ms' \
     'jmeter.save.saveservice.label=true' \
     'jmeter.save.saveservice.response_code=true' \
     'jmeter.save.saveservice.response_message=true' \
@@ -65,8 +65,6 @@ RUN printf '%s\n' \
     'jmeter.save.saveservice.connect_time=true' \
     'jmeter.save.saveservice.idle_time=true' \
     'jmeter.save.saveservice.url=true' \
-    'jmeter.save.saveservice.assertions=true' \
-    'jmeter.save.saveservice.assertion_results_failure_message=true' \
     > /opt/apache-jmeter-${JMETER_VERSION}/bin/user.properties
 
 # ✅ 关键：同步 Dashboard 报告生成器的解析格式（否则仍空白）
