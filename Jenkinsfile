@@ -119,44 +119,42 @@ pipeline {
         // --------------------------------------------------
         stage('Run JMeter Performance Tests') {
             steps {
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    script {
-                        echo ">>> 检查 JMeter 脚本是否存在..."
-
-                        // 宿主机上检查完整路径
-                        def scriptExist = sh(returnStatus: true, script: "test -f ${JMETER_SCRIPT_HOST}")
-                        if (scriptExist != 0) {
-                            echo "⚠️ 未找到 JMeter 脚本: ${JMETER_SCRIPT_HOST}，跳过性能测试阶段"
-                            catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                                error("JMeter 脚本缺失，已标记为 UNSTABLE 并跳过")
-                            }
-                            return
+                script {
+                    def scriptExist = sh(returnStatus: true, script: "test -f ${JMETER_SCRIPT_HOST}")
+                    if (scriptExist != 0) {
+                        echo "⚠️ 未找到 JMeter 脚本: ${JMETER_SCRIPT_HOST}，跳过性能测试"
+                        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                            error("JMeter 脚本缺失，已标记为 UNSTABLE")
                         }
+                        return
+                    }
 
-                        echo ">>> 启动 JMeter 性能测试容器: ${JMETER_CONTAINER}"
+                    echo ">>> 启动 JMeter 性能测试容器: ${JMETER_CONTAINER}"
 
-                        sh """
-                            docker rm -f ${JMETER_CONTAINER} || true
-                            
-                            # ✅ 关键修复：把 CSV 复制到工作目录根，匹配脚本里的 ./users.csv
-                            cp content/API_Project/jmeter/users.csv content/API_Project/users.csv || true
+                    sh """
+                        docker rm -f ${JMETER_CONTAINER} || true
 
-                            docker run --rm \
-                                --name ${JMETER_CONTAINER} \
-                                --volumes-from jenkins-master-cicd \
-                                -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                                ${TEST_IMAGE} \
-                                bash -c 'rm -rf report/jmeter-report report/jmeter-results.jtl && \
-                                jmeter -n -t ${JMETER_SCRIPT_CONTAINER} \
-                                    -l report/jmeter-results.jtl \
-                                    -e -o report/jmeter-report \
+                        docker run --rm \
+                            --name ${JMETER_CONTAINER} \
+                            --volumes-from jenkins-master-cicd \
+                            -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project/jmeter \
+                            ${TEST_IMAGE} \
+                            bash -c 'rm -rf ../report/jmeter-report ../report/jmeter-results.jtl ../report/jmeter.log && \
+                                jmeter -n -t api_load_test.jmx \
+                                    -l ../report/jmeter-results.jtl \
+                                    -j ../report/jmeter.log \
+                                    -e -o ../report/jmeter-report \
                                     -Jserver.rmi.ssl.disable=true \
                                     -Jjmeter.save.saveservice.output_format=csv \
                                     -Jjmeter.save.saveservice.assertion_results_failure_message=true'
                         """
+                        // ✅ 关键改动：
+                        // 1. -w 工作目录切到 jmeter/，./users.csv 直接指向同目录文件
+                        // 2. 脚本路径改为 api_load_test.jmx（当前目录下）
+                        // 3. 报告路径改为 ../report/（因为当前在 jmeter/ 子目录）
+                        // 4. 加 -j ../report/jmeter.log 保留 JMeter 内部日志，便于排查
 
-                        echo ">>> JMeter 性能测试执行完毕"
-                    }
+                    echo ">>> JMeter 性能测试执行完毕"
                 }
             }
         }
