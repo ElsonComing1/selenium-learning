@@ -137,14 +137,17 @@ pipeline {
 
                         sh """
                             docker rm -f ${JMETER_CONTAINER} || true
+                            
+                            # ✅ 关键修复：把 CSV 复制到工作目录根，匹配脚本里的 ./users.csv
+                            cp content/API_Project/jmeter/users.csv content/API_Project/users.csv || true
 
                             docker run --rm \
                                 --name ${JMETER_CONTAINER} \
                                 --volumes-from jenkins-master-cicd \
                                 -w /var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
-                                -e PYTHONPATH=/var/jenkins_home/workspace/API-Automation-Pipeline/content/API_Project \
                                 ${TEST_IMAGE} \
-                                bash -c 'rm -rf report/jmeter-report report/jmeter-results.jtl && jmeter -n -t ${JMETER_SCRIPT_CONTAINER} \
+                                bash -c 'rm -rf report/jmeter-report report/jmeter-results.jtl && \
+                                jmeter -n -t ${JMETER_SCRIPT_CONTAINER} \
                                     -l report/jmeter-results.jtl \
                                     -e -o report/jmeter-report \
                                     -Jserver.rmi.ssl.disable=true \
