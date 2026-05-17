@@ -49,6 +49,7 @@ pipeline {
 
                         sh """
                             docker build \
+                                --force-rm  \
                                 --no-cache \
                                 -t ${TEST_IMAGE} \
                                 -f Dockerfile.test \
@@ -258,6 +259,11 @@ pipeline {
                     ]
                 )
             }
+            // 在 post 的 always 里，清理构建残留
+            sh """
+                docker container prune -f --filter 'until=24h' || true
+                docker image prune -f || true
+            """
         }
 
         success {
