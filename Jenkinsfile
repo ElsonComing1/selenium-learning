@@ -290,7 +290,7 @@ pipeline {
                         "**分支**: ${env.GIT_BRANCH}\n",
                         "**持续时间**: ${currentBuild.durationString}\n",
                         "**Allure 报告**: [点击查看](${env.BUILD_URL}allure/)\n",
-                        "**JMeter 报告**: [点击查看](${env.BUILD_URL}JMeter_20Performance_20Report/)\n",
+                        "**Grafana 实时监控**: [点击查看](http://106.14.250.120:3000/d/xyz/jmeter-live?var-application=api-automation&var-testTitle=API-Pipeline)\n",
                         "**控制台**: [查看日志](${env.BUILD_URL}console)\n",
                         "---\n",
                         "📊 动态容器与性能测试环境已自动清理，资源已释放\n"
@@ -308,13 +308,17 @@ pipeline {
                             <tr><td style="background-color: #f2f2f2;"><b>Git 提交</b></td><td>${env.GIT_COMMIT?.take(7)}</td></tr>
                             <tr><td style="background-color: #f2f2f2;"><b>构建时长</b></td><td>${currentBuild.durationString}</td></tr>
                             <tr><td style="background-color: #f2f2f2;"><b>Allure 报告</b></td><td><a href="${env.BUILD_URL}allure/">点击查看详细报告</a></td></tr>
-                            <tr><td style="background-color: #f2f2f2;"><b>JMeter 性能报告</b></td><td><a href="${env.BUILD_URL}JMeter_20Performance_20Report/">点击查看性能测试报告</a></td></tr>
+                            <tr><td style="background-color: #f2f2f2;"><b>JMeter 性能报告</b></td><td><a href="http://106.14.250.120:3000/d/xyz/jmeter-live?var-application=api-automation&var-testTitle=API-Pipeline">点击查看性能测试报告</a></td></tr>
                         </table>
                         <p>动态测试容器与 JMeter 容器已自动销毁，资源已回收。</p>
                     """,
                     to: "${EMAIL_RECIPIENTS}",
                     mimeType: 'text/html'
                 )
+                sh """
+                    echo "JMeter 性能测试结果:" >> /tmp/build_summary.txt
+                    grep "summary =" ${WORKSPACE}/content/API_Project/report/jmeter.log | tail -n 1 >> /tmp/build_summary.txt
+                """
             }
         }
 

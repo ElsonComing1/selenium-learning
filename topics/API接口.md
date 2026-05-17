@@ -4656,7 +4656,151 @@ pipeline {
 
 搜索 `HTML Publisher` → 勾选 → **Install without restart**
 
-##### 7. 执行与验证
+##### 7. Jmeter可视化看板
+
+###### 1. 架构
+
+```bash
+你的 Jenkins 流水线
+    │
+    ▼
+JMeter 容器（压测执行） ──实时推送──► InfluxDB 容器（时序数据库）
+                                          │
+                                          ▼
+                                    Grafana 容器（Web 看板）
+                                          │
+                                          ▼
+                                    浏览器访问 http://106.14.250.120:3000
+```
+
+**优势**：
+
+- 压测过程中**实时看曲线**（响应时间、吞吐量、错误率）
+- 历史数据**永久保留**（可以对比 #72 构建和 #80 构建的性能趋势）
+- 原生支持 **P90/P95/P99 百分位线**（原生 Dashboard 没有）
+- 不再依赖 JMeter 那个有 bug 的 HTML 生成器
+
+###### 2. 在阿里云 ECS 上部署
+
+1. ssh登录ECS，创建监控目录
+
+```bash
+ssh root@106.14.250.120
+
+mkdir -p /opt/monitoring/grafana/{dashboards,datasources}
+cd /opt/monitoring
+```
+
+2. 创建 docker-compose.yml
+
+```bash
+cat > /opt/monitoring/docker-compose.yml <<'EOF'
+version: "3.8"
+
+services:
+  influxdb:
+    image: influxdb:1.8-alpine
+    container_name: influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=jmeter
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=admin123
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:9.5.20
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards-json:/var/lib/grafana/dashboards
+    networks:
+      - monitoring
+    depends_on:
+      - influxdb
+
+volumes:
+  influxdb_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge
+EOF
+```
+
+3. 创建 Grafana 自动配置（数据源 + 看板）
+
+```bash
+# 1. 数据源配置：自动连接 InfluxDB
+cat > /opt/monitoring/grafana/datasources/influxdb.yml <<'EOF'
+apiVersion: 1
+datasources:
+  - name: InfluxDB-JMeter
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    database: jmeter
+    isDefault: true
+    editable: false
+EOF
+
+# 2. 看板加载配置
+cat > /opt/monitoring/grafana/dashboards/dashboard.yml <<'EOF'
+apiVersion: 1
+providers:
+  - name: 'JMeter Dashboards'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+EOF
+
+# 3. 下载社区经典 JMeter 看板 JSON（国内镜像加速）
+curl -L -o /opt/monitoring/grafana/dashboards-json/jmeter-live.json \
+  "https://ghp.ci/https://raw.githubusercontent.com/grafana/grafana/master/public/dashboards/home.json" \
+  || echo "⚠️ 外网下载失败，下面提供手动导入方案"
+```
+
+如果curl出错，后面会有其他你不措施。
+
+4. 启动监控栈
+
+```bash
+cd /opt/monitoring
+docker compose up -d --build
+
+# 验证启动
+docker compose ps -a
+# 应该看到 influxdb 和 grafana 都是 Up
+
+# 创建 JMeter 数据库（只需执行一次）
+docker exec influxdb influx -execute "CREATE DATABASE jmeter"
+```
+
+5. 阿里云安全组放行端口
+
+![](../picturs/70.png)
+
+##### 8. 执行与验证
 
 ###### 1. 出发构建
 
